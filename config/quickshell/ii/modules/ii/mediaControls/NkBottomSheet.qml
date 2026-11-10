@@ -81,6 +81,7 @@ Scope {
         implicitHeight: root.sheetHeight + Appearance.sizes.hyprlandGapsOut * 2
         color: "transparent"
         WlrLayershell.namespace: "quickshell:mediaControls"
+        WlrLayershell.layer: WlrLayer.Overlay // show above fullscreen apps
         anchors {
             bottom: true
             left: true
