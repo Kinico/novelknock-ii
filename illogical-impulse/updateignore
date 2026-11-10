@@ -1,0 +1,11 @@
+# Files the dots-hyprland updater (./setup exp-update) must not touch.
+# Paths are relative to your home folder.
+
+# Your NovelKnock-style Quickshell ii (bar, Knock sidebar, System sidebar, bottom music sheet)
+.config/quickshell/ii/
+
+# Your ii settings (colors, transparency, etc.)
+.config/illogical-impulse/config.json
+
+# Your own Hyprland rules (includes the Quickshell blur rules)
+.config/hypr/custom/
