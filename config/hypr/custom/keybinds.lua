@@ -1,0 +1,2 @@
+hl.bind("CTRL+SUPER+ALT+Slash", hl.dsp.exec_cmd("xdg-open ~/.config/hypr/custom/keybinds.lua"), {description = "Edit user keybinds"} )
+hl.bind("SUPER + ALT + V", hl.dsp.exec_cmd("$HOME/.config/sunshine/hooks/vd-toggle.sh"), { description = "Sunshine: Toggle virtual display" })

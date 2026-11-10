@@ -1,0 +1,22 @@
+# Every file this setup keeps. Paths are relative to ~/.config
+quickshell/ii/modules/ii/bar/NkBarContent.qml
+quickshell/ii/modules/ii/bar/Bar.qml
+quickshell/ii/modules/ii/sidebarLeft/NkSidebarLeftContent.qml
+quickshell/ii/modules/ii/sidebarLeft/SidebarLeft.qml
+quickshell/ii/modules/ii/sidebarRight/NkSidebarRightContent.qml
+quickshell/ii/modules/ii/sidebarRight/SidebarRight.qml
+quickshell/ii/modules/ii/mediaControls/NkBottomSheet.qml
+quickshell/ii/panelFamilies/IllogicalImpulseFamily.qml
+quickshell/ii/modules/common/Appearance.qml
+hypr/hyprland/keybinds.lua
+hypr/custom/keybinds.lua
+hypr/custom/rules.lua
+hypr/custom/env.lua
+hypr/custom/execs.lua
+hypr/custom/general.lua
+hypr/custom/variables.lua
+hypr/custom/scripts/__restore_video_wallpaper.sh
+hypr/monitors.lua
+illogical-impulse/config.json
+illogical-impulse/updateignore
+illogical-impulse/knock-tags.json
