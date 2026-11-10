@@ -9,6 +9,8 @@ quickshell/ii/modules/ii/mediaControls/NkBottomSheet.qml
 quickshell/ii/panelFamilies/IllogicalImpulseFamily.qml
 quickshell/ii/modules/common/Appearance.qml
 quickshell/ii/services/HyprlandData.qml
+quickshell/ii/modules/ii/sidebarRight/volumeMixer/VolumeDialogContent.qml
+quickshell/ii/modules/ii/sidebarRight/volumeMixer/VolumeMixerEntry.qml
 hypr/hyprland/keybinds.lua
 hypr/custom/keybinds.lua
 hypr/custom/rules.lua
