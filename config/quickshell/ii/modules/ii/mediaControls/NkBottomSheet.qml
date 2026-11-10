@@ -27,6 +27,20 @@ Scope {
     readonly property real sheetHeight: 300
     property bool pinned: false
     property list<real> visualizerPoints: []
+    // Mixer rows: streams with the same app name are grouped into one row
+    readonly property var appGroups: {
+        const groups = {};
+        const order = [];
+        for (const n of Audio.outputAppNodes) {
+            const key = Audio.appNodeDisplayName(n);
+            if (!groups[key]) {
+                groups[key] = [];
+                order.push(key);
+            }
+            groups[key].push(n);
+        }
+        return order.map(k => ({ key: k, nodes: groups[k] }));
+    }
 
     // Keep app stream volumes readable
     PwObjectTracker {
@@ -346,18 +360,26 @@ Scope {
                     Layout.fillHeight: true
                     spacing: 6
                     clip: true
-                    model: Audio.outputAppNodes
+                    model: root.appGroups
                     delegate: Rectangle {
                         id: appRow
                         required property var modelData
+                        readonly property var nodes: modelData.nodes
+                        readonly property var node: modelData.nodes[0]
                         width: mixer.width
                         height: 42
                         radius: 12
                         color: ColorUtils.transparentize(Appearance.colors.colLayer1, 0.35)
-                        readonly property real volume: modelData?.audio?.volume ?? 0
-                        readonly property bool muted: modelData?.audio?.muted ?? false
-                        readonly property string iconName: modelData?.properties?.["application.icon-name"]
-                            ?? modelData?.properties?.["application.process.binary"] ?? "audio-x-generic"
+                        readonly property real volume: node?.audio?.volume ?? 0
+                        readonly property bool muted: node?.audio?.muted ?? false
+                        readonly property string iconName: node?.properties?.["application.icon-name"]
+                            ?? node?.properties?.["application.process.binary"] ?? "audio-x-generic"
+                        function setMuted(m) {
+                            for (const n of appRow.nodes) if (n?.audio) n.audio.muted = m;
+                        }
+                        function setVolume(v) {
+                            for (const n of appRow.nodes) if (n?.audio) n.audio.volume = v;
+                        }
 
                         RowLayout {
                             anchors {
@@ -376,7 +398,9 @@ Scope {
                                 font.family: root.nkFont
                                 font.pixelSize: 13
                                 color: Appearance.colors.colOnLayer0
-                                text: `#${appRow.modelData?.id ?? ""}  ${Audio.appNodeDisplayName(appRow.modelData)}`
+                                text: appRow.nodes.length > 1
+                                    ? `${appRow.modelData.key}  •  ${appRow.nodes.length} streams`
+                                    : `#${appRow.node?.id ?? ""}  ${appRow.modelData.key}`
                             }
                             Item { // Volume ring, scroll to change, click to mute
                                 implicitWidth: 34
@@ -401,14 +425,10 @@ Scope {
                         }
                         MouseArea {
                             anchors.fill: parent
-                            onClicked: {
-                                if (appRow.modelData?.audio) appRow.modelData.audio.muted = !appRow.modelData.audio.muted;
-                            }
+                            onClicked: appRow.setMuted(!appRow.muted)
                             onWheel: event => {
-                                const a = appRow.modelData?.audio;
-                                if (!a) return;
                                 const step = event.angleDelta.y > 0 ? 0.05 : -0.05;
-                                a.volume = Math.max(0, Math.min(1, a.volume + step));
+                                appRow.setVolume(Math.max(0, Math.min(1, appRow.volume + step)));
                             }
                         }
                     }
