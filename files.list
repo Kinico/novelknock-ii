@@ -8,6 +8,7 @@ quickshell/ii/modules/ii/sidebarRight/SidebarRight.qml
 quickshell/ii/modules/ii/mediaControls/NkBottomSheet.qml
 quickshell/ii/panelFamilies/IllogicalImpulseFamily.qml
 quickshell/ii/modules/common/Appearance.qml
+quickshell/ii/services/HyprlandData.qml
 hypr/hyprland/keybinds.lua
 hypr/custom/keybinds.lua
 hypr/custom/rules.lua
