@@ -6,7 +6,7 @@ REPO="$(pwd)"
 CFG="$HOME/.config"
 echo "Unlocking..."
 sudo chattr -R -i "$CFG/quickshell/ii" 2>/dev/null
-sudo chattr -i "$CFG/hypr/hyprland/keybinds.lua" 2>/dev/null
+sudo chattr -i "$CFG/hypr/hyprland/keybinds.lua" "$CFG/hypr/hyprland/execs.lua" 2>/dev/null
 sudo chattr -R -i "$CFG/hypr/custom" 2>/dev/null
 grep -v '^#' files.list | while read -r f; do
   [ -z "$f" ] && continue
