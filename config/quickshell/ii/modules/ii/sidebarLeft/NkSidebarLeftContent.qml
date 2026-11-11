@@ -733,9 +733,17 @@ Item {
                         saveTimer.restart();
                     }
 
+                    property real lastSave: 0
+                    property string wallTitle: ""
+
                     FileView {
                         id: viewFile
                         path: FileUtils.trimFileProtocol(`${Directories.config}/linux-wallpaperengine/view.json`)
+                        watchChanges: true // the watchdog swaps this file when the wallpaper changes
+                        onFileChanged: {
+                            // ignore the echo of our own writes while dragging
+                            if (Date.now() - wallCard.lastSave > 600 && !saveTimer.running) reload();
+                        }
                         onLoaded: {
                             try {
                                 wallCard.tweaks = JSON.parse(viewFile.text());
@@ -744,11 +752,25 @@ Item {
                             }
                         }
                     }
+                    FileView { // which wallpaper the values belong to (written by the watchdog)
+                        id: currentWallFile
+                        path: FileUtils.trimFileProtocol(`${Directories.config}/linux-wallpaperengine/current-wallpaper.json`)
+                        watchChanges: true
+                        onFileChanged: reload()
+                        onLoaded: {
+                            try {
+                                wallCard.wallTitle = JSON.parse(currentWallFile.text()).title ?? "";
+                            } catch (e) {
+                                wallCard.wallTitle = "";
+                            }
+                        }
+                    }
                     Timer { // write at most ~12 times a second while dragging
                         id: saveTimer
                         interval: 80
                         onTriggered: {
                             Quickshell.execDetached(["mkdir", "-p", FileUtils.trimFileProtocol(`${Directories.config}/linux-wallpaperengine`)]);
+                            wallCard.lastSave = Date.now();
                             viewFile.setText(JSON.stringify(wallCard.tweaks, null, 2));
                         }
                     }
@@ -792,6 +814,15 @@ Item {
                             visible: wallCard.expanded
                             Layout.fillWidth: true
                             spacing: 6
+
+                            NkText { // values are saved separately for every wallpaper
+                                Layout.fillWidth: true
+                                visible: wallCard.wallTitle.length > 0
+                                text: `Saved for: ${wallCard.wallTitle}`
+                                font.pixelSize: 11
+                                opacity: 0.75
+                                elide: Text.ElideRight
+                            }
 
                             Flow { // Monitor picker
                                 Layout.fillWidth: true

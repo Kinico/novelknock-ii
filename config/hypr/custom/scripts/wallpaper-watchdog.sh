@@ -4,6 +4,7 @@
 # - If the engine is gone for ~6 seconds (long enough for the app to switch wallpapers), it starts it again.
 # - If a monitor is turned off and on (or plugged back in), it restarts the engine so the wallpaper comes back.
 # - Waits for every monitor the wallpaper uses to be present before starting it.
+# - Keeps a separate zoom / X / Y for every wallpaper (view-presets.json), swapping view.json when the wallpaper changes.
 # - Pause it:  touch ~/.local/state/wallpaper-watchdog/paused   (remove the file to resume)
 # - Log:       ~/.local/state/wallpaper-watchdog/log
 STATE="${XDG_STATE_HOME:-$HOME/.local/state}/wallpaper-watchdog"
@@ -29,6 +30,66 @@ needed_screens() {
     awk 'prev=="--screen-root"{print} {prev=$0}' "$ARGS" 2>/dev/null
 }
 
+# ---- per-wallpaper zoom / X / Y ----
+VIEWDIR="$HOME/.config/linux-wallpaperengine"
+VIEW="$VIEWDIR/view.json"
+view_mtime=""
+
+wallpaper_key() {   # workshop id(s) of the wallpaper(s) in the saved command
+    awk 'p=="--bg"{sub(/\/+$/,""); n=split($0,a,"/"); printf "%s%s", (k?"+":""), a[n]; k=1} {p=$0}' "$ARGS"
+}
+
+presets() {   # presets <sync|store> <key> <bg paths...>
+    python3 - "$VIEWDIR" "$@" <<'PYEOF'
+import json, os, sys
+d, action, key, bgs = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4:]
+os.makedirs(d, exist_ok=True)
+view_p, pre_p, cur_p = (os.path.join(d, n) for n in ("view.json", "view-presets.json", "current-wallpaper.json"))
+def load(p, default):
+    try:
+        with open(p) as f: return json.load(f)
+    except Exception: return default
+def save(p, data):
+    tmp = p + ".tmp"
+    with open(tmp, "w") as f: json.dump(data, f, indent=2)
+    os.replace(tmp, p)
+pre = load(pre_p, {})
+view = load(view_p, {})
+old = load(cur_p, {}).get("key", "")
+if action == "sync" and old and old != key:
+    pre[old] = view                    # remember the old wallpaper's values
+    view = pre.get(key, {})            # new wallpaper: its own values, or default
+    save(view_p, view)
+pre[key] = view
+save(pre_p, pre)
+titles = []
+for bg in bgs:
+    t = load(os.path.join(bg, "project.json"), {}).get("title") or os.path.basename(bg.rstrip("/"))
+    titles.append(t)
+save(cur_p, {"key": key, "title": " + ".join(titles)})
+PYEOF
+}
+
+sync_presets() {
+    [ -s "$ARGS" ] || return
+    local key m
+    key=$(wallpaper_key)
+    [ -n "$key" ] || return
+    if [ "$key" != "$last_key" ]; then
+        mapfile -t bgs < <(awk 'p=="--bg"{print} {p=$0}' "$ARGS")
+        presets sync "$key" "${bgs[@]}"
+        [ -n "$last_key" ] && log "wallpaper changed to $key, loaded its zoom / X / Y"
+        last_key=$key
+        view_mtime=$(stat -c %y "$VIEW" 2>/dev/null)
+        return
+    fi
+    m=$(stat -c %y "$VIEW" 2>/dev/null)
+    if [ -n "$m" ] && [ "$m" != "$view_mtime" ]; then
+        view_mtime=$m
+        presets store "$key"
+    fi
+}
+
 screens_ready() {
     local mons s
     mons=" $(monitors)"
@@ -51,10 +112,10 @@ start_engine() {
 
 missing=0
 restarts=()
+last_key=""
 last_mons=$(monitors)
 while true; do
     sleep 2
-    [ -e "$STATE/paused" ] && { last_mons=$(monitors); continue; }
 
     # ---- monitor turned off/on or plugged in ----
     mons=$(monitors)
@@ -63,7 +124,7 @@ while true; do
         mons2=$(monitors)
         if [ "$mons2" != "$mons" ]; then continue; fi   # still changing, check again next loop
         last_mons=$mons
-        if [ -s "$ARGS" ] && screens_ready; then
+        if [ ! -e "$STATE/paused" ] && [ -s "$ARGS" ] && screens_ready; then
             log "monitors changed ($mons), restarting wallpaper"
             pkill -f "$PATTERN"
             sleep 1
@@ -81,12 +142,13 @@ while true; do
         missing=0
         tr '\0' '\n' < "/proc/$pid/cmdline" > "$ARGS.tmp" && [ -s "$ARGS.tmp" ] && mv "$ARGS.tmp" "$ARGS"
         readlink "/proc/$pid/cwd" > "$CWD" 2>/dev/null
+        sync_presets
         continue
     fi
 
     # ---- engine gone ----
     missing=$((missing + 1))
-    [ "$missing" -ge 3 ] && [ -s "$ARGS" ] || continue
+    [ "$missing" -ge 3 ] && [ -s "$ARGS" ] && [ ! -e "$STATE/paused" ] || continue
     screens_ready || continue                     # a monitor is off, wait for it to come back
 
     now=$(date +%s)
