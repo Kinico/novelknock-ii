@@ -264,6 +264,7 @@ Item {
                 }
                 onPressed: mouse => setFrom(mouse.x)
                 onPositionChanged: mouse => { if (pressed) setFrom(mouse.x); }
+                onPressedChanged: root.peeking = pressed // fade the rest of the sidebar while dragging
                 onDoubleClicked: ws.moved(ws.defaultValue)
                 onWheel: event => {
                     const step = (ws.to - ws.from) / 100;
@@ -315,6 +316,21 @@ Item {
     // ---------- Layout ----------
     // NovelKnock style: the header sits up in the bar row, the panel starts below it
     readonly property real headerHeight: Math.min(48, Appearance.sizes.barHeight - 6)
+
+    // While a wallpaper slider is dragged, hide everything except the Wallpaper position card
+    property bool peeking: false
+    function isAncestorOf(item, child) {
+        for (let p = child; p; p = p.parent) if (p === item) return true;
+        return false;
+    }
+    function fadeAllBut(item, keep, faded) {
+        for (const c of item.children) {
+            if (c === keep) continue;
+            if (root.isAncestorOf(c, keep)) root.fadeAllBut(c, keep, faded);
+            else c.opacity = faded ? 0 : 1;
+        }
+    }
+    onPeekingChanged: root.fadeAllBut(column, wallCard, root.peeking)
     readonly property color headerColor: ColorUtils.transparentize(ColorUtils.mix(Appearance.colors.colLayer0Base, Appearance.colors.colPrimaryContainer, 0.72), 0.32)
 
     Rectangle { // Header pill
@@ -327,6 +343,10 @@ Item {
         height: root.headerHeight
         radius: 12
         color: root.headerColor
+        opacity: root.peeking ? 0 : 1
+        Behavior on opacity {
+            NumberAnimation { duration: 150 }
+        }
         RowLayout {
             anchors {
                 fill: parent
@@ -354,6 +374,7 @@ Item {
 
     StyledRectangularShadow {
         target: knockBody
+        visible: !root.peeking
     }
     Rectangle { // Panel body
         id: knockBody
@@ -365,9 +386,12 @@ Item {
             bottom: parent.bottom
         }
         radius: 14
-        color: Appearance.colors.colLayer0
-        border.width: 1
+        color: root.peeking ? "transparent" : Appearance.colors.colLayer0
+        border.width: root.peeking ? 0 : 1
         border.color: Appearance.colors.colLayer0Border
+        Behavior on color {
+            ColorAnimation { duration: 150 }
+        }
 
     Flickable {
         anchors.fill: parent
