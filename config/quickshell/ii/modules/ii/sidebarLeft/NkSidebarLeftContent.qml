@@ -212,6 +212,75 @@ Item {
 
     GameModeToggle { id: gameModeModel }
 
+    // Compact slider used by the Wallpaper position dropdown
+    component WallSlider: RowLayout {
+        id: ws
+        property string label
+        property real from: 0
+        property real to: 1
+        property real value: 0
+        property real defaultValue: 0
+        property string suffix: ""
+        signal moved(real v)
+        Layout.fillWidth: true
+        spacing: 10
+        NkText {
+            Layout.preferredWidth: 42
+            text: ws.label
+            font.pixelSize: 12
+        }
+        Item {
+            id: wsTrack
+            Layout.fillWidth: true
+            implicitHeight: 18
+            readonly property real frac: (ws.value - ws.from) / (ws.to - ws.from)
+            Rectangle {
+                anchors.verticalCenter: parent.verticalCenter
+                width: parent.width
+                height: 4
+                radius: 2
+                color: root.trackColor
+                Rectangle {
+                    width: parent.width * Math.max(0, Math.min(1, wsTrack.frac))
+                    height: parent.height
+                    radius: 2
+                    color: root.accent
+                }
+            }
+            Rectangle {
+                x: Math.max(0, Math.min(parent.width - width, parent.width * wsTrack.frac - width / 2))
+                anchors.verticalCenter: parent.verticalCenter
+                width: 12
+                height: 12
+                radius: 6
+                color: root.accent
+            }
+            MouseArea {
+                anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
+                function setFrom(px) {
+                    const f = Math.max(0, Math.min(1, px / width));
+                    ws.moved(ws.from + f * (ws.to - ws.from));
+                }
+                onPressed: mouse => setFrom(mouse.x)
+                onPositionChanged: mouse => { if (pressed) setFrom(mouse.x); }
+                onDoubleClicked: ws.moved(ws.defaultValue)
+                onWheel: event => {
+                    const step = (ws.to - ws.from) / 100;
+                    ws.moved(Math.max(ws.from, Math.min(ws.to, ws.value + (event.angleDelta.y > 0 ? step : -step))));
+                }
+            }
+        }
+        NkText {
+            Layout.preferredWidth: 44
+            horizontalAlignment: Text.AlignRight
+            text: `${ws.value.toFixed(2)}${ws.suffix}`
+            font.family: Appearance.font.family.monospace
+            font.pixelSize: 11
+            opacity: 0.85
+        }
+    }
+
     // ---------- Data ----------
     Timer {
         running: GlobalStates.sidebarLeftOpen && root.player?.playbackState == MprisPlaybackState.Playing
@@ -657,74 +726,6 @@ Item {
                         onTriggered: {
                             Quickshell.execDetached(["mkdir", "-p", FileUtils.trimFileProtocol(`${Directories.config}/linux-wallpaperengine`)]);
                             viewFile.setText(JSON.stringify(wallCard.tweaks, null, 2));
-                        }
-                    }
-
-                    component WallSlider: RowLayout {
-                        id: ws
-                        property string label
-                        property real from: 0
-                        property real to: 1
-                        property real value: 0
-                        property real defaultValue: 0
-                        property string suffix: ""
-                        signal moved(real v)
-                        Layout.fillWidth: true
-                        spacing: 10
-                        NkText {
-                            Layout.preferredWidth: 42
-                            text: ws.label
-                            font.pixelSize: 12
-                        }
-                        Item {
-                            id: wsTrack
-                            Layout.fillWidth: true
-                            implicitHeight: 18
-                            readonly property real frac: (ws.value - ws.from) / (ws.to - ws.from)
-                            Rectangle {
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: parent.width
-                                height: 4
-                                radius: 2
-                                color: root.trackColor
-                                Rectangle {
-                                    width: parent.width * Math.max(0, Math.min(1, wsTrack.frac))
-                                    height: parent.height
-                                    radius: 2
-                                    color: root.accent
-                                }
-                            }
-                            Rectangle {
-                                x: Math.max(0, Math.min(parent.width - width, parent.width * wsTrack.frac - width / 2))
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: 12
-                                height: 12
-                                radius: 6
-                                color: root.accent
-                            }
-                            MouseArea {
-                                anchors.fill: parent
-                                cursorShape: Qt.PointingHandCursor
-                                function setFrom(px) {
-                                    const f = Math.max(0, Math.min(1, px / width));
-                                    ws.moved(ws.from + f * (ws.to - ws.from));
-                                }
-                                onPressed: mouse => setFrom(mouse.x)
-                                onPositionChanged: mouse => { if (pressed) setFrom(mouse.x); }
-                                onDoubleClicked: ws.moved(ws.defaultValue)
-                                onWheel: event => {
-                                    const step = (ws.to - ws.from) / 100;
-                                    ws.moved(Math.max(ws.from, Math.min(ws.to, ws.value + (event.angleDelta.y > 0 ? step : -step))));
-                                }
-                            }
-                        }
-                        NkText {
-                            Layout.preferredWidth: 44
-                            horizontalAlignment: Text.AlignRight
-                            text: `${ws.value.toFixed(2)}${ws.suffix}`
-                            font.family: Appearance.font.family.monospace
-                            font.pixelSize: 11
-                            opacity: 0.85
                         }
                     }
 
