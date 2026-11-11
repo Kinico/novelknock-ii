@@ -13,9 +13,10 @@ CWD="$STATE/last-cwd"
 LOG="$STATE/log"
 PATTERN='(^|/)linux-wallpaperengine( |$)'
 
-# only one watchdog at a time
-exec 9>"$STATE/lock"
-flock -n 9 || exit 0
+# only one watchdog at a time (the lock is not passed to the wallpaper engine, so a
+# restarted engine can never block a new watchdog from starting)
+exec 9>"$STATE/watchdog.lock"
+flock -w 15 9 || exit 0   # waits a moment in case an old watchdog is still shutting down
 
 log() { echo "$(date '+%F %T') $*" >> "$LOG"; }
 
@@ -44,7 +45,7 @@ start_engine() {
     (
         cd "${dir:-/opt/linux-wallpaperengine}" || exit
         export LD_LIBRARY_PATH="/opt/linux-wallpaperengine/lib:$LD_LIBRARY_PATH"
-        setsid "${cmd[@]}" >/dev/null 2>&1 &
+        setsid "${cmd[@]}" >/dev/null 2>&1 9>&- &
     )
 }
 

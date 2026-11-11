@@ -881,20 +881,79 @@ Item {
                     }
                 }
 
-                Card { // Reload config
+                RowLayout { // Reload config + Reload wallpaper
                     Layout.fillWidth: true
-                    implicitHeight: 40
-                    color: reloadMouse.containsMouse ? Appearance.colors.colLayer1Hover : root.cardColor
-                    NkText {
-                        anchors.centerIn: parent
-                        text: "Reload config"
-                        font.pixelSize: 13
+                    spacing: 6
+
+                    Card { // Reload config
+                        Layout.fillWidth: true
+                        implicitHeight: 40
+                        color: reloadMouse.containsMouse ? Appearance.colors.colLayer1Hover : root.cardColor
+                        RowLayout {
+                            anchors.centerIn: parent
+                            spacing: 6
+                            MaterialSymbol {
+                                text: "refresh"
+                                iconSize: 18
+                                color: root.textColor
+                            }
+                            NkText {
+                                text: "Reload config"
+                                font.pixelSize: 13
+                            }
+                        }
+                        MouseArea {
+                            id: reloadMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: Quickshell.execDetached(["hyprctl", "reload"])
+                        }
                     }
-                    MouseArea {
-                        id: reloadMouse
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        onClicked: Quickshell.execDetached(["hyprctl", "reload"])
+
+                    Card { // Reload wallpaper: restarts the wallpaper engine with the last wallpaper
+                        id: reloadWallCard
+                        Layout.fillWidth: true
+                        implicitHeight: 40
+                        property bool busy: false
+                        color: reloadWallMouse.containsMouse ? Appearance.colors.colLayer1Hover : root.cardColor
+                        RowLayout {
+                            anchors.centerIn: parent
+                            spacing: 6
+                            MaterialSymbol {
+                                text: "wallpaper"
+                                iconSize: 18
+                                color: root.textColor
+                            }
+                            NkText {
+                                text: reloadWallCard.busy ? "Reloading..." : "Reload wallpaper"
+                                font.pixelSize: 13
+                            }
+                        }
+                        Timer {
+                            id: reloadWallTimer
+                            interval: 2500
+                            onTriggered: reloadWallCard.busy = false
+                        }
+                        MouseArea {
+                            id: reloadWallMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                if (reloadWallCard.busy) return;
+                                reloadWallCard.busy = true;
+                                reloadWallTimer.restart();
+                                Quickshell.execDetached(["bash", "-c",
+                                    "S=\"${XDG_STATE_HOME:-$HOME/.local/state}/wallpaper-watchdog\"; " +
+                                    "pkill -f '(^|/)linux-wallpaperengine( |$)'; sleep 1; " +
+                                    "[ -s \"$S/last-args\" ] || exit 0; " +
+                                    "mapfile -t c < \"$S/last-args\"; " +
+                                    "cd \"$(cat \"$S/last-cwd\" 2>/dev/null || echo /opt/linux-wallpaperengine)\" || cd /opt/linux-wallpaperengine; " +
+                                    "export LD_LIBRARY_PATH=\"/opt/linux-wallpaperengine/lib:$LD_LIBRARY_PATH\"; " +
+                                    "setsid \"${c[@]}\" >/dev/null 2>&1 &"]);
+                            }
+                        }
                     }
                 }
             }
