@@ -1,0 +1,6 @@
+# makepkg build output for the patched wallpaper engine
+wallpaperengine/src/
+wallpaperengine/pkg/
+wallpaperengine/linux-wallpaperengine-src/
+wallpaperengine/*.pkg.tar.*
+wallpaperengine/*.log

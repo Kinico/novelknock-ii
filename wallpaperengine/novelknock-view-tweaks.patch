@@ -1,0 +1,138 @@
+diff --git a/src/WallpaperEngine/Render/CWallpaper.cpp b/src/WallpaperEngine/Render/CWallpaper.cpp
+index d0f7eab..5807414 100644
+--- a/src/WallpaperEngine/Render/CWallpaper.cpp
++++ b/src/WallpaperEngine/Render/CWallpaper.cpp
+@@ -1,4 +1,5 @@
+ #include "CWallpaper.h"
++#include "ViewTweaks.h"
+ #include "WallpaperEngine/Logging/Log.h"
+ #include "WallpaperEngine/Render/Wallpapers/CScene.h"
+ #include "WallpaperEngine/Render/Wallpapers/CVideo.h"
+@@ -269,6 +270,9 @@ void CWallpaper::render (
+ 	vend = uvs.vend;
+     }
+ 
++    // NovelKnock: apply this monitor's zoom and X/Y offset from ~/.config/linux-wallpaperengine/view.json
++    ViewTweaks::apply (ustart, uend, vstart, vend);
++
+     const GLfloat texCoords[] = {
+ 	ustart, vstart, uend, vstart, ustart, vend, ustart, vend, uend, vstart, uend, vend,
+     };
+diff --git a/src/WallpaperEngine/Render/RenderContext.cpp b/src/WallpaperEngine/Render/RenderContext.cpp
+index af0112e..89518a9 100644
+--- a/src/WallpaperEngine/Render/RenderContext.cpp
++++ b/src/WallpaperEngine/Render/RenderContext.cpp
+@@ -4,6 +4,7 @@
+ 
+ #include "CWallpaper.h"
+ #include "RenderContext.h"
++#include "ViewTweaks.h"
+ 
+ #include "WallpaperEngine/Data/Model/Project.h"
+ 
+@@ -27,6 +28,7 @@ void RenderContext::render (Drivers::Output::OutputViewport* viewport) {
+ 
+     // render the background
+     if (const auto ref = this->m_wallpapers.find (viewport->name); ref != this->m_wallpapers.end ()) {
++	ViewTweaks::currentOutput = viewport->name; // NovelKnock: per-monitor zoom/offset
+ 	ref->second->render (
+ 	    viewport->viewport, this->getOutput ().renderVFlip (), viewport->globalPosition, viewport->logicalSize
+ 	);
+diff --git a/src/WallpaperEngine/Render/ViewTweaks.h b/src/WallpaperEngine/Render/ViewTweaks.h
+new file mode 100644
+index 0000000..6ef2cbf
+--- /dev/null
++++ b/src/WallpaperEngine/Render/ViewTweaks.h
+@@ -0,0 +1,92 @@
++#pragma once
++// NovelKnock patch: per-monitor zoom and X/Y offset for linux-wallpaperengine.
++// Reads ~/.config/linux-wallpaperengine/view.json, e.g.
++//   { "DP-3": { "zoom": 1.2, "x": 0.1, "y": -0.05 }, "HDMI-A-1": { "zoom": 1.0, "x": 0, "y": 0 } }
++// zoom: 1 = normal, 2 = twice as close. x/y: -1..1, fraction of the screen to shift the image
++// (x > 0 moves the image right, y > 0 moves the image down). The file is re-read when it changes.
++#include <chrono>
++#include <cstdlib>
++#include <filesystem>
++#include <fstream>
++#include <map>
++#include <string>
++
++#include <nlohmann/json.hpp>
++
++namespace WallpaperEngine::Render::ViewTweaks {
++struct Tweak {
++    float zoom = 1.0f;
++    float x = 0.0f;
++    float y = 0.0f;
++};
++
++inline std::string currentOutput;
++
++inline std::filesystem::path configPath () {
++    const char* xdg = std::getenv ("XDG_CONFIG_HOME");
++    const char* home = std::getenv ("HOME");
++    std::filesystem::path base = (xdg && *xdg) ? std::filesystem::path (xdg)
++	: std::filesystem::path (home ? home : ".") / ".config";
++    return base / "linux-wallpaperengine" / "view.json";
++}
++
++inline const Tweak& get (const std::string& output) {
++    static std::map<std::string, Tweak> tweaks;
++    static std::filesystem::file_time_type lastWrite {};
++    static auto lastCheck = std::chrono::steady_clock::time_point {};
++    static const Tweak none {};
++
++    const auto now = std::chrono::steady_clock::now ();
++    if (now - lastCheck > std::chrono::milliseconds (200)) {
++	lastCheck = now;
++	std::error_code ec;
++	const auto path = configPath ();
++	const auto write = std::filesystem::last_write_time (path, ec);
++	if (ec) {
++	    tweaks.clear ();
++	} else if (write != lastWrite) {
++	    lastWrite = write;
++	    try {
++		std::ifstream in (path);
++		const auto json = nlohmann::json::parse (in);
++		std::map<std::string, Tweak> fresh;
++		for (const auto& [name, value] : json.items ()) {
++		    if (!value.is_object ())
++			continue;
++		    Tweak t;
++		    t.zoom = value.value ("zoom", 1.0f);
++		    t.x = value.value ("x", 0.0f);
++		    t.y = value.value ("y", 0.0f);
++		    if (t.zoom < 0.1f)
++			t.zoom = 0.1f;
++		    fresh [name] = t;
++		}
++		tweaks = std::move (fresh);
++	    } catch (...) {
++		// keep the last good values while the file is being written
++	    }
++	}
++    }
++
++    if (const auto it = tweaks.find (output); it != tweaks.end ())
++	return it->second;
++    return none;
++}
++
++// Applies the tweak for the current output to a UV rectangle (works with flipped V ranges too)
++inline void apply (float& ustart, float& uend, float& vstart, float& vend) {
++    const Tweak& t = get (currentOutput);
++    if (t.zoom == 1.0f && t.x == 0.0f && t.y == 0.0f)
++	return;
++    const float uRange = uend - ustart;
++    const float vRange = vend - vstart;
++    const float cu = (ustart + uend) * 0.5f - t.x * uRange;
++    const float cv = (vstart + vend) * 0.5f - t.y * vRange;
++    const float hu = uRange * 0.5f / t.zoom;
++    const float hv = vRange * 0.5f / t.zoom;
++    ustart = cu - hu;
++    uend = cu + hu;
++    vstart = cv - hv;
++    vend = cv + hv;
++}
++} // namespace WallpaperEngine::Render::ViewTweaks

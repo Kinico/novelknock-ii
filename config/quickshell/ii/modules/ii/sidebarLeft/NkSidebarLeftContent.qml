@@ -211,8 +211,6 @@ Item {
     }
 
     GameModeToggle { id: gameModeModel }
-    NightLightToggle { id: nightLightModel }
-    IdleInhibitorToggle { id: keepAwakeModel }
 
     // ---------- Data ----------
     Timer {
@@ -587,8 +585,6 @@ Item {
                     HyprToggle { icon: "animation"; label: "Animations"; optionKey: "animations:enabled" }
                     HyprToggle { icon: "shadow"; label: "Shadows"; optionKey: "decoration:shadow:enabled" }
                     ModelToggle { model: gameModeModel }
-                    ModelToggle { model: nightLightModel; iconOverride: "bedtime" }
-                    ModelToggle { model: keepAwakeModel }
                     Card { // Do not disturb
                         Layout.fillWidth: true
                         implicitHeight: 46
@@ -614,6 +610,246 @@ Item {
                                 onClicked: {
                                     Notifications.silent = !Notifications.silent;
                                     checked = Qt.binding(() => Notifications.silent);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Card { // Wallpaper position dropdown (needs the patched linux-wallpaperengine)
+                    id: wallCard
+                    Layout.fillWidth: true
+                    implicitHeight: wallColumn.implicitHeight + 16
+                    property bool expanded: false
+                    property string screenName: Quickshell.screens.length > 0 ? Quickshell.screens[0].name : ""
+                    property var tweaks: ({}) // { "DP-3": { zoom, x, y }, ... }
+                    readonly property var current: tweaks[screenName] ?? { zoom: 1, x: 0, y: 0 }
+
+                    function setValue(key, value) {
+                        const all = Object.assign({}, wallCard.tweaks);
+                        const t = Object.assign({ zoom: 1, x: 0, y: 0 }, all[wallCard.screenName] ?? {});
+                        t[key] = Math.round(value * 1000) / 1000;
+                        all[wallCard.screenName] = t;
+                        wallCard.tweaks = all;
+                        saveTimer.restart();
+                    }
+                    function resetScreen() {
+                        const all = Object.assign({}, wallCard.tweaks);
+                        all[wallCard.screenName] = { zoom: 1, x: 0, y: 0 };
+                        wallCard.tweaks = all;
+                        saveTimer.restart();
+                    }
+
+                    FileView {
+                        id: viewFile
+                        path: FileUtils.trimFileProtocol(`${Directories.config}/linux-wallpaperengine/view.json`)
+                        onLoaded: {
+                            try {
+                                wallCard.tweaks = JSON.parse(viewFile.text());
+                            } catch (e) {
+                                wallCard.tweaks = {};
+                            }
+                        }
+                    }
+                    Timer { // write at most ~12 times a second while dragging
+                        id: saveTimer
+                        interval: 80
+                        onTriggered: {
+                            Quickshell.execDetached(["mkdir", "-p", FileUtils.trimFileProtocol(`${Directories.config}/linux-wallpaperengine`)]);
+                            viewFile.setText(JSON.stringify(wallCard.tweaks, null, 2));
+                        }
+                    }
+
+                    component WallSlider: RowLayout {
+                        id: ws
+                        property string label
+                        property real from: 0
+                        property real to: 1
+                        property real value: 0
+                        property real defaultValue: 0
+                        property string suffix: ""
+                        signal moved(real v)
+                        Layout.fillWidth: true
+                        spacing: 10
+                        NkText {
+                            Layout.preferredWidth: 42
+                            text: ws.label
+                            font.pixelSize: 12
+                        }
+                        Item {
+                            id: wsTrack
+                            Layout.fillWidth: true
+                            implicitHeight: 18
+                            readonly property real frac: (ws.value - ws.from) / (ws.to - ws.from)
+                            Rectangle {
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: parent.width
+                                height: 4
+                                radius: 2
+                                color: root.trackColor
+                                Rectangle {
+                                    width: parent.width * Math.max(0, Math.min(1, wsTrack.frac))
+                                    height: parent.height
+                                    radius: 2
+                                    color: root.accent
+                                }
+                            }
+                            Rectangle {
+                                x: Math.max(0, Math.min(parent.width - width, parent.width * wsTrack.frac - width / 2))
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 12
+                                height: 12
+                                radius: 6
+                                color: root.accent
+                            }
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                function setFrom(px) {
+                                    const f = Math.max(0, Math.min(1, px / width));
+                                    ws.moved(ws.from + f * (ws.to - ws.from));
+                                }
+                                onPressed: mouse => setFrom(mouse.x)
+                                onPositionChanged: mouse => { if (pressed) setFrom(mouse.x); }
+                                onDoubleClicked: ws.moved(ws.defaultValue)
+                                onWheel: event => {
+                                    const step = (ws.to - ws.from) / 100;
+                                    ws.moved(Math.max(ws.from, Math.min(ws.to, ws.value + (event.angleDelta.y > 0 ? step : -step))));
+                                }
+                            }
+                        }
+                        NkText {
+                            Layout.preferredWidth: 44
+                            horizontalAlignment: Text.AlignRight
+                            text: `${ws.value.toFixed(2)}${ws.suffix}`
+                            font.family: Appearance.font.family.monospace
+                            font.pixelSize: 11
+                            opacity: 0.85
+                        }
+                    }
+
+                    ColumnLayout {
+                        id: wallColumn
+                        anchors {
+                            left: parent.left
+                            right: parent.right
+                            top: parent.top
+                            margins: 8
+                            leftMargin: 12
+                            rightMargin: 12
+                        }
+                        spacing: 8
+
+                        RowLayout { // Dropdown header
+                            Layout.fillWidth: true
+                            spacing: 8
+                            MaterialSymbol {
+                                text: "wallpaper"
+                                iconSize: 18
+                                color: root.textColor
+                            }
+                            NkText {
+                                Layout.fillWidth: true
+                                text: "Wallpaper position"
+                                font.pixelSize: 13
+                            }
+                            MaterialSymbol {
+                                text: wallCard.expanded ? "expand_less" : "expand_more"
+                                iconSize: 20
+                                color: root.textColor
+                            }
+                            TapHandler {
+                                onTapped: wallCard.expanded = !wallCard.expanded
+                            }
+                        }
+
+                        ColumnLayout {
+                            visible: wallCard.expanded
+                            Layout.fillWidth: true
+                            spacing: 6
+
+                            Flow { // Monitor picker
+                                Layout.fillWidth: true
+                                spacing: 4
+                                Repeater {
+                                    model: Quickshell.screens
+                                    delegate: Rectangle {
+                                        required property var modelData
+                                        readonly property bool selected: wallCard.screenName === modelData.name
+                                        width: monText.implicitWidth + 16
+                                        height: 24
+                                        radius: 8
+                                        color: selected ? root.accent : monMouse.containsMouse ? Appearance.colors.colLayer1Hover : root.cardColor
+                                        NkText {
+                                            id: monText
+                                            anchors.centerIn: parent
+                                            text: modelData.name
+                                            font.pixelSize: 11
+                                            color: parent.selected ? Appearance.colors.colOnPrimary : root.textColor
+                                        }
+                                        MouseArea {
+                                            id: monMouse
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: wallCard.screenName = modelData.name
+                                        }
+                                    }
+                                }
+                            }
+
+                            WallSlider {
+                                label: "Zoom"
+                                from: 1
+                                to: 3
+                                defaultValue: 1
+                                suffix: "x"
+                                value: Number(wallCard.current.zoom ?? 1)
+                                onMoved: v => wallCard.setValue("zoom", v)
+                            }
+                            WallSlider {
+                                label: "X"
+                                from: -1
+                                to: 1
+                                defaultValue: 0
+                                value: Number(wallCard.current.x ?? 0)
+                                onMoved: v => wallCard.setValue("x", v)
+                            }
+                            WallSlider {
+                                label: "Y"
+                                from: -1
+                                to: 1
+                                defaultValue: 0
+                                value: Number(wallCard.current.y ?? 0)
+                                onMoved: v => wallCard.setValue("y", v)
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                NkText {
+                                    Layout.fillWidth: true
+                                    text: "Double-click a slider to reset it"
+                                    font.pixelSize: 11
+                                    opacity: 0.65
+                                }
+                                Rectangle {
+                                    implicitWidth: resetText.implicitWidth + 20
+                                    implicitHeight: 26
+                                    radius: 8
+                                    color: resetWallMouse.containsMouse ? Appearance.colors.colLayer1Hover : root.sectionColor
+                                    NkText {
+                                        id: resetText
+                                        anchors.centerIn: parent
+                                        text: `Reset ${wallCard.screenName}`
+                                        font.pixelSize: 12
+                                    }
+                                    MouseArea {
+                                        id: resetWallMouse
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: wallCard.resetScreen()
+                                    }
                                 }
                             }
                         }
