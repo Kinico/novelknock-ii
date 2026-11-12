@@ -85,6 +85,7 @@ MouseArea {
     }
     function setWeMode(on) {
         root.weMode = on;
+        if (!on) Wallpapers.searchQuery = filterField.text;
         if (on && root.weItems.length === 0) root.weRefresh();
     }
     function weRefresh() {
@@ -532,9 +533,17 @@ MouseArea {
             }
         }
     }
+    Timer { // apply the search box to the library shortly after you stop typing
+        id: weFilterTimer
+        interval: 220
+        onTriggered: {
+            root.weFilter = filterField.text;
+            if (root.weTab === "workshop") wsSearchTimer.restart();
+        }
+    }
     Timer { // search the Workshop shortly after you stop typing
         id: wsSearchTimer
-        interval: 600
+        interval: 400
         onTriggered: root.wsQuery(1)
     }
     function wsFolder(item) {
@@ -1670,9 +1679,9 @@ MouseArea {
 
                                 // Search
                                 onTextChanged: {
-                                    Wallpapers.searchQuery = text;
-                                    root.weFilter = text;
-                                    if (root.weMode && root.weTab === "workshop") wsSearchTimer.restart();
+                                    // NovelKnock: wait until you stop typing, so the grid isn't rebuilt on every key
+                                    if (root.weMode) weFilterTimer.restart();
+                                    else Wallpapers.searchQuery = text;
                                 }
 
                                 Keys.onPressed: event => {
