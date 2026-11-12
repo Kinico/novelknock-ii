@@ -158,6 +158,17 @@ Scope {
     onTrackKeyChanged: {
         if (root.fullscreen) lyricDebounce.restart();
     }
+    // While the fullscreen view is open the small sheet never shows. Anything that tries to open it
+    // (Super+X, the bar's music pill, the bottom line) closes the fullscreen view instead.
+    Connections {
+        target: GlobalStates
+        function onMediaControlsOpenChanged() {
+            if (GlobalStates.mediaControlsOpen && root.fullscreen) {
+                GlobalStates.mediaControlsOpen = false;
+                root.setFullscreen(false);
+            }
+        }
+    }
     Timer { // the title and artist arrive one after the other when the song changes
         id: lyricDebounce
         interval: 600
