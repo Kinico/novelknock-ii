@@ -962,167 +962,191 @@ MouseArea {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
 
-                Rectangle { // Wallpaper Engine header: Library / Workshop tabs, filters
+                Rectangle { // Wallpaper Engine header: tabs on top, the filters for the open tab below
                     visible: root.weMode
                     Layout.margins: 4
                     Layout.fillWidth: true
-                    implicitHeight: addressBar.implicitHeight
+                    implicitHeight: headerColumn.implicitHeight + 12
                     radius: wallpaperGridBackground.radius - Layout.margins
                     color: Appearance.colors.colLayer1
 
-                    RowLayout {
+                    ColumnLayout {
+                        id: headerColumn
                         anchors {
-                            fill: parent
+                            left: parent.left
+                            right: parent.right
+                            verticalCenter: parent.verticalCenter
                             leftMargin: 8
                             rightMargin: 8
                         }
                         spacing: 4
 
-                        HeaderChip {
-                            chipIcon: "photo_library"
-                            chipLabel: root.weLoading ? "Library" : `Library ${root.weItems.length}`
-                            toggled: root.weTab === "library"
-                            onClicked: root.setWeTab("library")
-                        }
-                        HeaderChip {
-                            chipIcon: "star"
-                            chipLabel: `Favorites ${root.weFavs.length}`
-                            toggled: root.weTab === "favorites"
-                            onClicked: root.setWeTab("favorites")
-                        }
-                        HeaderChip {
-                            chipIcon: "dashboard_customize"
-                            chipLabel: `Combos ${root.weCombos.length}`
-                            toggled: root.weTab === "combos"
-                            onClicked: root.setWeTab("combos")
-                        }
-                        HeaderChip {
-                            chipIcon: "storefront"
-                            chipLabel: "Workshop"
-                            toggled: root.weTab === "workshop"
-                            onClicked: root.setWeTab("workshop")
-                        }
-                        HeaderChip {
-                            chipIcon: "settings"
-                            chipLabel: "Settings"
-                            toggled: root.weTab === "settings"
-                            onClicked: root.setWeTab("settings")
-                        }
-                        Item {
+                        RowLayout { // tabs + reload
                             Layout.fillWidth: true
-                        }
-
-                        // Library filters (click to switch)
-                        StyledText { // Combos tab: short messages ("Combo saved")
-                            visible: root.weTab === "combos" && root.weMessage.length > 0
-                            text: root.weMessage
-                            font.pixelSize: Appearance.font.pixelSize.small
-                            color: Appearance.colors.colPrimary
-                        }
-                        HeaderChip { // Combos tab: save what is on the displays now
-                            visible: root.weTab === "combos"
-                            chipIcon: "add"
-                            chipLabel: "Save current combo"
-                            onClicked: root.saveCurrentCombo()
-                            StyledToolTip {
-                                text: "Saves which wallpaper is on each display right now"
+                            spacing: 4
+                            HeaderChip {
+                                chipIcon: "photo_library"
+                                chipLabel: root.weLoading ? "Library" : `Library ${root.weItems.length}`
+                                toggled: root.weTab === "library"
+                                onClicked: root.setWeTab("library")
+                            }
+                            HeaderChip {
+                                chipIcon: "star"
+                                chipLabel: `Favorites ${root.weFavs.length}`
+                                toggled: root.weTab === "favorites"
+                                onClicked: root.setWeTab("favorites")
+                            }
+                            HeaderChip {
+                                chipIcon: "dashboard_customize"
+                                chipLabel: `Combos ${root.weCombos.length}`
+                                toggled: root.weTab === "combos"
+                                onClicked: root.setWeTab("combos")
+                            }
+                            HeaderChip {
+                                chipIcon: "storefront"
+                                chipLabel: "Workshop"
+                                toggled: root.weTab === "workshop"
+                                onClicked: root.setWeTab("workshop")
+                            }
+                            HeaderChip {
+                                chipIcon: "settings"
+                                chipLabel: "Settings"
+                                toggled: root.weTab === "settings"
+                                onClicked: root.setWeTab("settings")
+                            }
+                            Item {
+                                Layout.fillWidth: true
+                            }
+                            HeaderChip {
+                                visible: root.weTab !== "settings"
+                                chipIcon: "refresh"
+                                chipLabel: ""
+                                implicitWidth: 32
+                                onClicked: root.weTab === "workshop" ? root.wsQuery(root.wsPage) : root.weRefresh()
+                                StyledToolTip {
+                                    text: root.weTab === "workshop" ? "Reload this page" : "Reload your library (after new downloads)"
+                                }
                             }
                         }
-                        HeaderChip { // Combos tab: start each login with a random saved combo
-                            visible: root.weTab === "combos"
-                            chipIcon: root.g("randomCombo") ? "shuffle_on" : "shuffle"
-                            chipLabel: root.g("randomCombo") ? "Random at login: on" : "Random at login: off"
-                            toggled: !!root.g("randomCombo")
-                            onClicked: root.setGlobal("randomCombo", !root.g("randomCombo"))
-                            StyledToolTip {
-                                text: "When on, every login starts with a random saved combo. With random favorites on too, it picks from both"
-                            }
-                        }
-                        HeaderChip { // Favorites tab only: start each login with a random favorite
-                            visible: root.weTab === "favorites"
-                            chipIcon: root.g("randomFavorite") ? "shuffle_on" : "shuffle"
-                            chipLabel: root.g("randomFavorite") ? "Random at login: on" : "Random at login: off"
-                            toggled: !!root.g("randomFavorite")
-                            onClicked: root.setGlobal("randomFavorite", !root.g("randomFavorite"))
-                            StyledToolTip {
-                                text: "When on, every login starts with a random favorite. With random combos on too, it picks from both"
-                            }
-                        }
-                        HeaderChip {
-                            visible: root.libTab
-                            chipIcon: "category"
-                            chipLabel: root.typeNames[root.prefs.libType]
-                            toggled: root.prefs.libType !== "all"
-                            onClicked: root.setPref("libType", root.cycle(["all", "scene", "video", "web"], root.prefs.libType))
-                        }
-                        HeaderChip {
-                            visible: root.libTab
-                            chipIcon: "shield"
-                            chipLabel: root.ratingNames[root.prefs.libRating]
-                            toggled: root.prefs.libRating !== "all"
-                            onClicked: root.setPref("libRating", root.cycle(["all", "Everyone", "Questionable", "Mature"], root.prefs.libRating))
-                        }
-                        HeaderChip {
-                            visible: root.libTab
-                            chipIcon: "sort"
-                            chipLabel: root.libSortNames[root.prefs.libSort]
-                            onClicked: root.setPref("libSort", root.cycle(["newest", "title"], root.prefs.libSort))
-                        }
 
-                        // Workshop filters
-                        HeaderChip {
-                            visible: root.weTab === "workshop"
-                            chipIcon: "trending_up"
-                            chipLabel: root.weFilter.trim().length > 0 ? "Best match" : root.wsSortNames[root.prefs.wsSort]
-                            onClicked: root.setPref("wsSort", root.cycle(["trend", "votes", "subscriptions", "date", "updated"], root.prefs.wsSort))
-                        }
-                        HeaderChip {
-                            visible: root.weTab === "workshop"
-                            chipIcon: "category"
-                            chipLabel: root.typeNames[root.prefs.wsType]
-                            toggled: root.prefs.wsType !== "all"
-                            onClicked: root.setPref("wsType", root.cycle(["all", "Scene", "Video", "Web"], root.prefs.wsType))
-                        }
-                        HeaderChip {
-                            visible: root.weTab === "workshop"
-                            chipIcon: "shield"
-                            chipLabel: root.ratingNames[root.prefs.wsRating]
-                            toggled: root.prefs.wsRating !== "all"
-                            onClicked: root.setPref("wsRating", root.cycle(["all", "Everyone", "Questionable", "Mature"], root.prefs.wsRating))
-                        }
-                        HeaderChip {
-                            visible: root.weTab === "workshop"
-                            chipIcon: "chevron_left"
-                            chipLabel: ""
-                            implicitWidth: 32
-                            enabled: root.wsPage > 1 && !root.wsLoading
-                            opacity: enabled ? 1 : 0.4
-                            onClicked: root.wsQuery(root.wsPage - 1)
-                        }
-                        StyledText {
-                            visible: root.weTab === "workshop"
-                            text: `${root.wsPage}`
-                            font.pixelSize: Appearance.font.pixelSize.small
-                            color: Appearance.colors.colOnLayer1
-                        }
-                        HeaderChip {
-                            visible: root.weTab === "workshop"
-                            chipIcon: "chevron_right"
-                            chipLabel: ""
-                            implicitWidth: 32
-                            enabled: root.wsHasNext && !root.wsLoading
-                            opacity: enabled ? 1 : 0.4
-                            onClicked: root.wsQuery(root.wsPage + 1)
-                        }
-
-                        HeaderChip {
+                        Rectangle { // divider
                             visible: root.weTab !== "settings"
-                            chipIcon: "refresh"
-                            chipLabel: ""
-                            implicitWidth: 32
-                            onClicked: root.weTab === "workshop" ? root.wsQuery(root.wsPage) : root.weRefresh()
-                            StyledToolTip {
-                                text: root.weTab === "workshop" ? "Reload this page" : "Reload your library (after new downloads)"
+                            Layout.fillWidth: true
+                            implicitHeight: 1
+                            color: ColorUtils.transparentize(Appearance.colors.colOnLayer1, 0.88)
+                        }
+
+                        RowLayout { // filters for the open tab
+                            id: filterRow
+                            visible: root.weTab !== "settings"
+                            Layout.fillWidth: true
+                            spacing: 4
+
+                            // Library filters (click to switch)
+                            StyledText { // Combos tab: short messages ("Combo saved")
+                                visible: root.weTab === "combos" && root.weMessage.length > 0
+                                text: root.weMessage
+                                font.pixelSize: Appearance.font.pixelSize.small
+                                color: Appearance.colors.colPrimary
+                            }
+                            HeaderChip { // Combos tab: save what is on the displays now
+                                visible: root.weTab === "combos"
+                                chipIcon: "add"
+                                chipLabel: "Save current combo"
+                                onClicked: root.saveCurrentCombo()
+                                StyledToolTip {
+                                    text: "Saves which wallpaper is on each display right now"
+                                }
+                            }
+                            HeaderChip { // Combos tab: start each login with a random saved combo
+                                visible: root.weTab === "combos"
+                                chipIcon: root.g("randomCombo") ? "shuffle_on" : "shuffle"
+                                chipLabel: root.g("randomCombo") ? "Random at login: on" : "Random at login: off"
+                                toggled: !!root.g("randomCombo")
+                                onClicked: root.setGlobal("randomCombo", !root.g("randomCombo"))
+                                StyledToolTip {
+                                    text: "When on, every login starts with a random saved combo. With random favorites on too, it picks from both"
+                                }
+                            }
+                            HeaderChip { // Favorites tab only: start each login with a random favorite
+                                visible: root.weTab === "favorites"
+                                chipIcon: root.g("randomFavorite") ? "shuffle_on" : "shuffle"
+                                chipLabel: root.g("randomFavorite") ? "Random at login: on" : "Random at login: off"
+                                toggled: !!root.g("randomFavorite")
+                                onClicked: root.setGlobal("randomFavorite", !root.g("randomFavorite"))
+                                StyledToolTip {
+                                    text: "When on, every login starts with a random favorite. With random combos on too, it picks from both"
+                                }
+                            }
+                            HeaderChip {
+                                visible: root.libTab
+                                chipIcon: "category"
+                                chipLabel: root.typeNames[root.prefs.libType]
+                                toggled: root.prefs.libType !== "all"
+                                onClicked: root.setPref("libType", root.cycle(["all", "scene", "video", "web"], root.prefs.libType))
+                            }
+                            HeaderChip {
+                                visible: root.libTab
+                                chipIcon: "shield"
+                                chipLabel: root.ratingNames[root.prefs.libRating]
+                                toggled: root.prefs.libRating !== "all"
+                                onClicked: root.setPref("libRating", root.cycle(["all", "Everyone", "Questionable", "Mature"], root.prefs.libRating))
+                            }
+                            HeaderChip {
+                                visible: root.libTab
+                                chipIcon: "sort"
+                                chipLabel: root.libSortNames[root.prefs.libSort]
+                                onClicked: root.setPref("libSort", root.cycle(["newest", "title"], root.prefs.libSort))
+                            }
+
+                            // Workshop filters
+                            HeaderChip {
+                                visible: root.weTab === "workshop"
+                                chipIcon: "trending_up"
+                                chipLabel: root.weFilter.trim().length > 0 ? "Best match" : root.wsSortNames[root.prefs.wsSort]
+                                onClicked: root.setPref("wsSort", root.cycle(["trend", "votes", "subscriptions", "date", "updated"], root.prefs.wsSort))
+                            }
+                            HeaderChip {
+                                visible: root.weTab === "workshop"
+                                chipIcon: "category"
+                                chipLabel: root.typeNames[root.prefs.wsType]
+                                toggled: root.prefs.wsType !== "all"
+                                onClicked: root.setPref("wsType", root.cycle(["all", "Scene", "Video", "Web"], root.prefs.wsType))
+                            }
+                            HeaderChip {
+                                visible: root.weTab === "workshop"
+                                chipIcon: "shield"
+                                chipLabel: root.ratingNames[root.prefs.wsRating]
+                                toggled: root.prefs.wsRating !== "all"
+                                onClicked: root.setPref("wsRating", root.cycle(["all", "Everyone", "Questionable", "Mature"], root.prefs.wsRating))
+                            }
+                            HeaderChip {
+                                visible: root.weTab === "workshop"
+                                chipIcon: "chevron_left"
+                                chipLabel: ""
+                                implicitWidth: 32
+                                enabled: root.wsPage > 1 && !root.wsLoading
+                                opacity: enabled ? 1 : 0.4
+                                onClicked: root.wsQuery(root.wsPage - 1)
+                            }
+                            StyledText {
+                                visible: root.weTab === "workshop"
+                                text: `${root.wsPage}`
+                                font.pixelSize: Appearance.font.pixelSize.small
+                                color: Appearance.colors.colOnLayer1
+                            }
+                            HeaderChip {
+                                visible: root.weTab === "workshop"
+                                chipIcon: "chevron_right"
+                                chipLabel: ""
+                                implicitWidth: 32
+                                enabled: root.wsHasNext && !root.wsLoading
+                                opacity: enabled ? 1 : 0.4
+                                onClicked: root.wsQuery(root.wsPage + 1)
+                            }
+
+                            Item {
+                                Layout.fillWidth: true
                             }
                         }
                     }
