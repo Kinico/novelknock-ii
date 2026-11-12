@@ -25,6 +25,7 @@ hypr/custom/scripts/wallpaper-apply.sh
 hypr/custom/scripts/workshop.mjs
 hypr/custom/scripts/perf-hud.sh
 hypr/custom/scripts/game-mode.sh
+hypr/custom/scripts/lyrics.py
 hypr/custom/keybinds.lua
 hypr/custom/rules.lua
 hypr/custom/env.lua
