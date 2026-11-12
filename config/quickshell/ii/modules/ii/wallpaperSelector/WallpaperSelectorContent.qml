@@ -206,11 +206,24 @@ MouseArea {
     function weShowingOn(id) {
         return Object.keys(root.weScreens).filter(s => root.weScreens[s] === id);
     }
-    function weApplyTo(dir, screen) {
+    // close: double-clicking a wallpaper closes the picker, the Apply buttons keep it open
+    function weApplyTo(dir, screen, close) {
         if (!dir) return;
         Quickshell.execDetached(["bash", root.weScript, "apply", dir].concat(screen ? [screen] : []));
-        filterField.text = "";
-        GlobalStates.wallpaperSelectorOpen = false;
+        if (close) {
+            filterField.text = "";
+            GlobalStates.wallpaperSelectorOpen = false;
+        } else {
+            root.weMessage = screen ? `Applied to ${screen}` : "Applied to all displays";
+            applyMessageTimer.restart();
+        }
+    }
+    Timer {
+        id: applyMessageTimer
+        interval: 4000
+        onTriggered: {
+            if (root.weMessage.startsWith("Applied")) root.weMessage = "";
+        }
     }
     function weSetting(id, key) {
         const s = root.weSettings[id] ?? {};
@@ -1149,7 +1162,7 @@ MouseArea {
                             cursorShape: Qt.PointingHandCursor
                             onEntered: weGrid.currentIndex = index
                             onClicked: root.weSelect(modelData)
-                            onDoubleClicked: root.weApplyTo(modelData.dir, "")
+                            onDoubleClicked: root.weApplyTo(modelData.dir, "", true)
 
                             Rectangle {
                                 anchors {
@@ -1937,7 +1950,7 @@ MouseArea {
                                 buttonRadius: 12
                                 colBackground: Appearance.colors.colPrimary
                                 colBackgroundHover: Appearance.colors.colPrimaryHover
-                                onClicked: root.weApplyTo(weDetails.item?.dir, "")
+                                onClicked: root.weApplyTo(weDetails.item?.dir, "", false)
                                 contentItem: RowLayout {
                                     spacing: 6
                                     Item { Layout.fillWidth: true }
@@ -2012,7 +2025,7 @@ MouseArea {
                                     buttonRadius: 10
                                     colBackground: Appearance.colors.colLayer2
                                     horizontalPadding: 12
-                                    onClicked: root.weApplyTo(weDetails.item?.dir, modelData.name)
+                                    onClicked: root.weApplyTo(weDetails.item?.dir, modelData.name, false)
                                     contentItem: RowLayout {
                                         spacing: 8
                                         MaterialSymbol {
