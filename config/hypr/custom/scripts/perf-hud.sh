@@ -3,6 +3,7 @@
 #   perf-hud.sh toggle | show | hide        show or hide the overlay in running games (no restart)
 #   perf-hud.sh set <item> true|false       choose what it shows (fps, graph, gpu, gputemp, vram, clocks, cpu, cputemp, ram, power)
 #   perf-hud.sh position <top-left|top-right|bottom-left|bottom-right>
+#   perf-hud.sh size <small|medium|large|huge>
 #   perf-hud.sh status                      JSON: installed, loaded at login, shown, items, position
 #   perf-hud.sh stats                       JSON: live GPU and CPU sensor readings for the widget
 # MangoHud must be loaded into the game when it starts (MANGOHUD=1 at login does that for every
@@ -21,7 +22,7 @@ write_conf() {
     python3 - "$STATE" "$CONF" "${XDG_STATE_HOME:-$HOME/.local/state}/quickshell/user/generated/colors.json" <<'PYEOF'
 import json, os, re, sys
 state_p, conf_p, colors_p = sys.argv[1:4]
-defaults = {"shown": False, "position": "top-left",
+defaults = {"shown": False, "position": "top-left", "size": "medium",
             "items": {"fps": True, "graph": True, "gpu": True, "gputemp": True, "vram": True, "clocks": False,
                       "cpu": True, "cputemp": True, "ram": True, "power": False}}
 try:
@@ -54,7 +55,7 @@ lines = [
     "round_corners=12",
     "background_alpha=0.45",
     "background_color=101014",
-    "font_size=18",
+    f"font_size={ {'small': 18, 'medium': 24, 'large': 30, 'huge': 38}.get(st.get('size'), 24) }",
     "text_color=ECECEC",
     f"gpu_color={accent}", f"cpu_color={accent}", f"vram_color={accent}", f"ram_color={accent}",
     f"engine_color={accent}", f"frametime_color={accent}",
@@ -106,6 +107,9 @@ case "$1" in
     position)
         case "$2" in top-left|top-right|bottom-left|bottom-right) ;; *) exit 1 ;; esac
         set_state "st['position'] = '$2'"; write_conf ;;
+    size)
+        case "$2" in small|medium|large|huge) ;; *) exit 1 ;; esac
+        set_state "st['size'] = '$2'"; write_conf ;;
     init)
         write_conf ;;
     status)
@@ -134,6 +138,6 @@ case "$1" in
             "${busy:-0}" "${vu:-0}" "${vt:-0}" "$(( ${te:-0} / 1000 ))" "$(( ${tj:-0} / 1000 ))" "$(( ${clk:-0} / 1000000 ))" "${fan:-0}" "$(( ${pw:-0} / 1000000 ))" "$(( ${ct:-0} / 1000 ))"
         ;;
     *)
-        echo "usage: $0 toggle | show | hide | set <item> true|false | position <corner> | status | stats" >&2
+        echo "usage: $0 toggle | show | hide | set <item> true|false | position <corner> | size <size> | status | stats" >&2
         exit 1 ;;
 esac

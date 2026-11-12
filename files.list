@@ -13,6 +13,7 @@ quickshell/ii/modules/ii/sidebarRight/volumeMixer/VolumeDialogContent.qml
 quickshell/ii/modules/ii/sidebarRight/volumeMixer/VolumeMixerEntry.qml
 quickshell/ii/modules/ii/wallpaperSelector/WallpaperSelectorContent.qml
 quickshell/ii/modules/common/Persistent.qml
+quickshell/ii/modules/common/models/quickToggles/GameModeToggle.qml
 quickshell/ii/modules/ii/overlay/OverlayContext.qml
 quickshell/ii/modules/ii/overlay/OverlayWidgetDelegateChooser.qml
 quickshell/ii/modules/ii/overlay/perfHud/PerfHud.qml
@@ -23,6 +24,7 @@ hypr/custom/scripts/wallpaper-colors.sh
 hypr/custom/scripts/wallpaper-apply.sh
 hypr/custom/scripts/workshop.mjs
 hypr/custom/scripts/perf-hud.sh
+hypr/custom/scripts/game-mode.sh
 hypr/custom/keybinds.lua
 hypr/custom/rules.lua
 hypr/custom/env.lua

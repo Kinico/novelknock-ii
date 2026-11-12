@@ -15,7 +15,7 @@ StyledOverlayWidget {
     id: root
     title: "Performance"
     minimumWidth: 380
-    minimumHeight: 300
+    minimumHeight: 360
 
     readonly property string script: `${FileUtils.trimFileProtocol(Directories.config)}/hypr/custom/scripts/perf-hud.sh`
     property var hud: ({ shown: false, position: "top-left", items: {}, installed: true, loaded: true })
@@ -265,6 +265,39 @@ StyledOverlayWidget {
                             text: cornerBtn.modelData[1]
                             font.pixelSize: Appearance.font.pixelSize.small
                             color: cornerBtn.toggled ? Appearance.colors.colOnSecondaryContainer : Appearance.colors.colOnLayer2
+                        }
+                    }
+                }
+            }
+
+            // text size
+            StyledText {
+                text: "Size"
+                font.pixelSize: Appearance.font.pixelSize.small
+                color: Appearance.colors.colSubtext
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 6
+                Repeater {
+                    model: [["small", "Small"], ["medium", "Medium"], ["large", "Large"], ["huge", "Huge"]]
+                    delegate: RippleButton {
+                        id: sizeBtn
+                        required property var modelData
+                        Layout.fillWidth: true
+                        implicitHeight: 30
+                        buttonRadius: 15
+                        toggled: (root.hud.size ?? "medium") === modelData[0]
+                        colBackground: Appearance.colors.colLayer2
+                        colBackgroundToggled: Appearance.colors.colSecondaryContainer
+                        colBackgroundToggledHover: Appearance.colors.colSecondaryContainerHover
+                        onClicked: root.run(["size", modelData[0]])
+                        contentItem: StyledText {
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                            text: sizeBtn.modelData[1]
+                            font.pixelSize: Appearance.font.pixelSize.small
+                            color: sizeBtn.toggled ? Appearance.colors.colOnSecondaryContainer : Appearance.colors.colOnLayer2
                         }
                     }
                 }

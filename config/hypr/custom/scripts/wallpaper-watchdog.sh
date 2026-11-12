@@ -185,7 +185,7 @@ while true; do
         mons2=$(monitors)
         if [ "$mons2" != "$mons" ]; then continue; fi   # still changing, check again next loop
         last_mons=$mons
-        if [ ! -e "$STATE/paused" ] && [ -s "$ARGS" ] && screens_ready; then
+        if [ ! -e "$STATE/paused" ] && [ ! -e "$STATE/gamemode" ] && [ -s "$ARGS" ] && screens_ready; then
             log "monitors changed ($mons), restarting wallpaper"
             pkill -f "$PATTERN"
             sleep 1
@@ -209,7 +209,7 @@ while true; do
 
     # ---- engine gone ----
     missing=$((missing + 1))
-    [ "$missing" -ge 3 ] && [ -s "$ARGS" ] && [ ! -e "$STATE/paused" ] || continue
+    [ "$missing" -ge 3 ] && [ -s "$ARGS" ] && [ ! -e "$STATE/paused" ] && [ ! -e "$STATE/gamemode" ] || continue   # gamemode: Game mode turned the wallpaper off
     screens_ready || continue                     # a monitor is off, wait for it to come back
 
     now=$(date +%s)

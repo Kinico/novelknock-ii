@@ -243,6 +243,7 @@ print(json.dumps(items))
         # to Hyprland and it blocks the new watchdog, so the wallpaper would never come back.
         pkill -f 'wallpaper-watchdog\.sh' 2>/dev/null
         pkill -f "$PATTERN" 2>/dev/null
+        rm -f "$STATE/gamemode" "$STATE/gamemode-had-wallpaper" "$STATE/gamemode-profile"   # Game mode does not carry over a login
         # wait until the monitors have settled (same list twice in a row, up to ~10 s)
         prev=""
         for _ in 1 2 3 4 5 6 7 8 9 10; do
