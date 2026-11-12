@@ -551,6 +551,60 @@ Item {
                         }
                     }
 
+                    Rectangle { // Color picker: click, pick any color on screen, the hex code is copied
+                        id: pickerButton
+                        Layout.alignment: Qt.AlignVCenter
+                        visible: root.sideWidth >= 330
+                        implicitWidth: 30
+                        implicitHeight: 30
+                        radius: 15
+                        property string lastColor: ""
+                        color: pickerMouse.containsMouse ? ColorUtils.transparentize(root.textColor, 0.85) : "transparent"
+                        MaterialSymbol {
+                            anchors.centerIn: parent
+                            text: "colorize"
+                            iconSize: 19
+                            color: root.textColor
+                        }
+                        Rectangle { // the last color you picked
+                            visible: pickerButton.lastColor.length > 0
+                            anchors {
+                                right: parent.right
+                                bottom: parent.bottom
+                                margins: 2
+                            }
+                            width: 9
+                            height: 9
+                            radius: 5
+                            color: pickerButton.lastColor.length > 0 ? pickerButton.lastColor : "transparent"
+                            border.width: 1
+                            border.color: root.textColor
+                        }
+                        Process {
+                            id: pickerProc
+                            command: ["hyprpicker", "-a", "-f", "hex"]
+                            stdout: StdioCollector {
+                                id: pickerOut
+                                onStreamFinished: {
+                                    const c = pickerOut.text.trim();
+                                    if (/^#[0-9a-fA-F]{6}$/.test(c)) {
+                                        pickerButton.lastColor = c;
+                                        Quickshell.execDetached(["notify-send", "-a", "Color picker", "-t", "2500", `Copied ${c.toUpperCase()}`, "The color code is in your clipboard"]);
+                                    }
+                                }
+                            }
+                        }
+                        MouseArea {
+                            id: pickerMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                if (!pickerProc.running) pickerProc.running = true;
+                            }
+                        }
+                    }
+
                     ColumnLayout { // Keyboard + layout
                         Layout.alignment: Qt.AlignVCenter
                         visible: root.sideWidth >= 330
@@ -597,19 +651,38 @@ Item {
                         implicitWidth: 34
                         implicitHeight: 34
                         readonly property real level: Battery.available ? Battery.percentage : (Audio.sink?.audio?.volume ?? 0)
+                        readonly property bool muted: !Battery.available && (Audio.sink?.audio?.muted ?? false)
+                        MouseArea { // Volume ring: scroll to change the volume, click to mute
+                            anchors {
+                                fill: parent
+                                margins: -5
+                            }
+                            enabled: !Battery.available
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                if (Audio.sink?.audio) Audio.sink.audio.muted = !Audio.sink.audio.muted;
+                            }
+                            onWheel: event => {
+                                if (!Audio.sink?.audio) return;
+                                const step = event.angleDelta.y > 0 ? 0.05 : -0.05;
+                                Audio.sink.audio.volume = Math.max(0, Math.min(1, Math.round((Audio.sink.audio.volume + step) * 20) / 20));
+                                event.accepted = true;
+                            }
+                        }
                         CircularProgress {
                             anchors.centerIn: parent
                             implicitSize: 32
                             lineWidth: 3
                             value: Math.min(1, parent.level)
-                            colPrimary: (Battery.available && Battery.isLowAndNotCharging) ? Appearance.colors.colError : root.accent
+                            colPrimary: parent.muted ? Appearance.colors.colOutline : (Battery.available && Battery.isLowAndNotCharging) ? Appearance.colors.colError : root.accent
                             colSecondary: root.trackColor
                             enableAnimation: false
                         }
                         NkText {
                             anchors.centerIn: parent
                             visible: !(Battery.available && Battery.isCharging)
-                            text: Math.round(parent.level * 100)
+                            text: parent.muted ? "M" : Math.round(parent.level * 100)
                             font.pixelSize: 11
                         }
                         MaterialSymbol {
