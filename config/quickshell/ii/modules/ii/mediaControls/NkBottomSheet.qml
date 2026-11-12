@@ -100,6 +100,7 @@ Scope {
 
     // ===== Fullscreen view with synced lyrics (Super+Alt+X, or the fullscreen button on the sheet) =====
     property bool fullscreen: false
+    readonly property bool sheetOpen: GlobalStates.mediaControlsOpen && !root.fullscreen
     property var fsScreen: null
     property var lyricLines: []        // [{ t: seconds, text }]
     property string lyricPlain: ""
@@ -121,7 +122,11 @@ Scope {
             root.fullscreen = true;
             root.loadLyrics();
         } else {
-            root.fullscreen = false;
+            // close on the next tick: hiding the window while it is still handling the key press or
+            // click that closed it crashed Quickshell
+            Qt.callLater(() => {
+                root.fullscreen = false;
+            });
         }
     }
     function loadLyrics() {
@@ -164,8 +169,10 @@ Scope {
         target: GlobalStates
         function onMediaControlsOpenChanged() {
             if (GlobalStates.mediaControlsOpen && root.fullscreen) {
-                GlobalStates.mediaControlsOpen = false;
-                root.setFullscreen(false);
+                Qt.callLater(() => {
+                    GlobalStates.mediaControlsOpen = false;
+                    root.fullscreen = false;
+                });
             }
         }
     }
@@ -234,7 +241,7 @@ Scope {
 
     PanelWindow {
         id: sheetWindow
-        visible: GlobalStates.mediaControlsOpen || sheet.y < sheetWindow.height
+        visible: root.sheetOpen || sheet.y < sheetWindow.height
         exclusionMode: ExclusionMode.Ignore
         exclusiveZone: 0
         implicitHeight: root.sheetHeight + Appearance.sizes.hyprlandGapsOut * 2
@@ -273,7 +280,7 @@ Scope {
             x: Appearance.sizes.hyprlandGapsOut
             width: parent.width - Appearance.sizes.hyprlandGapsOut * 2
             height: root.sheetHeight
-            y: GlobalStates.mediaControlsOpen ? Appearance.sizes.hyprlandGapsOut : sheetWindow.height + 10
+            y: root.sheetOpen ? Appearance.sizes.hyprlandGapsOut : sheetWindow.height + 10
             Behavior on y {
                 NumberAnimation {
                     duration: 350
@@ -602,7 +609,7 @@ Scope {
         color: "transparent"
         WlrLayershell.namespace: "quickshell:mediaFullscreen"
         WlrLayershell.layer: WlrLayer.Overlay
-        WlrLayershell.keyboardFocus: root.fullscreen ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+        WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
         anchors {
             top: true
             bottom: true
@@ -639,7 +646,7 @@ Scope {
                 id: fsCover
                 anchors.fill: parent
                 visible: false
-                source: root.fullscreen ? (root.player?.trackArtUrl ?? "") : ""
+                source: root.player?.trackArtUrl ?? ""
                 asynchronous: true
                 fillMode: Image.PreserveAspectCrop
                 sourceSize.width: 480
@@ -650,7 +657,6 @@ Scope {
                 visible: fsCover.status === Image.Ready
                 source: fsCover
                 radius: 96
-                cached: true
             }
             Rectangle {
                 anchors.fill: parent
@@ -671,7 +677,7 @@ Scope {
                 readonly property real barWidth: 10
                 spacing: root.visualizerPoints.length > 0 ? (width - barWidth * root.visualizerPoints.length) / Math.max(1, root.visualizerPoints.length - 1) : 0
                 Repeater {
-                    model: root.fullscreen ? root.visualizerPoints.length : 0
+                    model: root.visualizerPoints.length
                     delegate: Rectangle {
                         required property int index
                         anchors.bottom: parent.bottom
