@@ -277,16 +277,17 @@ print(json.dumps(items))
             prev=$cur
             sleep 1
         done
-        # Combos tab > "Random combo at login": pick one saved combo, each wallpaper on its own display
-        combo=$(workshop_dirs | python3 -c '
+        # Random at login (Favorites and Combos tabs). With both on, saved combos and favorites go into
+        # one pool and one is picked: a combo puts each wallpaper on its own display, a favorite goes on all.
+        pick=$(workshop_dirs | python3 -c '
 import json, os, random, sys
 cfg, monitors = sys.argv[1], [m for m in sys.argv[2].split() if m]
-try:
-    if not json.load(open(os.path.join(cfg, "global-settings.json"))).get("randomCombo"):
-        sys.exit(0)
-    combos = json.load(open(os.path.join(cfg, "combos.json")))
-except Exception:
-    sys.exit(0)
+def load(name, default):
+    try:
+        return json.load(open(os.path.join(cfg, name)))
+    except Exception:
+        return default
+g = load("global-settings.json", {})
 roots = sys.stdin.read().split()
 def folder(wid):
     for r in roots:
@@ -294,34 +295,23 @@ def folder(wid):
         if os.path.isfile(os.path.join(d, "project.json")):
             return d
     return ""
-usable = []
-for c in combos if isinstance(combos, list) else []:
-    m = {s: folder(w) for s, w in (c.get("screens") or {}).items() if s in monitors}
-    m = {s: d for s, d in m.items() if d}
-    if m:
-        usable.append(m)
-if usable:
-    print(json.dumps(random.choice(usable)))
+pool = []
+if g.get("randomCombo"):
+    for c in load("combos.json", []):
+        m = {s: folder(w) for s, w in (c.get("screens") or {}).items() if s in monitors}
+        m = {s: d for s, d in m.items() if d}
+        if m:
+            pool.append(m)
+if g.get("randomFavorite"):
+    for f in load("favorites.json", []):
+        d = folder(f)
+        if d and monitors:
+            pool.append({s: d for s in monitors})
+if pool:
+    print(json.dumps(random.choice(pool)))
 ' "$(dirname "$SETTINGS")" "$cur")
-        # Settings > "Random favorite at login": pick one of your starred wallpapers
-        fav=$(workshop_dirs | python3 -c '
-import json, os, random, sys
-cfg = sys.argv[1]
-try:
-    if not json.load(open(os.path.join(cfg, "global-settings.json"))).get("randomFavorite"):
-        sys.exit(0)
-    favs = [str(f) for f in json.load(open(os.path.join(cfg, "favorites.json")))]
-except Exception:
-    sys.exit(0)
-dirs = [os.path.join(r, f) for r in sys.stdin.read().split() for f in favs
-        if os.path.isfile(os.path.join(r, f, "project.json"))]
-if dirs:
-    print(random.choice(dirs))
-' "$(dirname "$SETTINGS")")
-        if [ -n "$combo" ]; then
-            build_args "map:$combo" all > "$PICKED.tmp" && mv "$PICKED.tmp" "$PICKED" && args_key "$PICKED" > "$STATE/picked-key"
-        elif [ -n "$fav" ]; then
-            build_args "$fav" all > "$PICKED.tmp" && mv "$PICKED.tmp" "$PICKED" && args_key "$PICKED" > "$STATE/picked-key"
+        if [ -n "$pick" ]; then
+            build_args "map:$pick" all > "$PICKED.tmp" && mv "$PICKED.tmp" "$PICKED" && args_key "$PICKED" > "$STATE/picked-key"
         elif [ -s "$ARGS" ]; then
             # last wallpapers per display, rebuilt for the monitors connected right now
             build_args - all > "$PICKED.tmp" && mv "$PICKED.tmp" "$PICKED" && args_key "$PICKED" > "$STATE/picked-key"

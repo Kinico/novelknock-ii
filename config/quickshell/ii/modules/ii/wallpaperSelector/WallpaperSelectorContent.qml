@@ -315,14 +315,7 @@ MouseArea {
     function isCurrentCombo(combo) {
         return root.sameCombo(combo.screens ?? {}, root.weScreens);
     }
-    // only one random mode at a time
-    function setRandomMode(mode) { // "off", "favorite", "combo"
-        const all = Object.assign({}, root.weGlobal);
-        all.randomFavorite = mode === "favorite";
-        all.randomCombo = mode === "combo";
-        root.weGlobal = all;
-        globalFile.setText(JSON.stringify(all, null, 2));
-    }
+    // random favorite and random combo are separate switches; with both on, login picks from both
     FileView {
         id: comboFile
         path: `${root.weStateDir}/combos.json`
@@ -359,7 +352,7 @@ MouseArea {
         if (key === "autoRestart" || key === null)
             Quickshell.execDetached(["bash", root.weScript, "autorestart", root.g("autoRestart") ? "on" : "off"]);
         if (key === "translate") root.loadProps(root.weSel);
-        else if (key !== "autoRestart" && key !== "randomFavorite") reapplyTimer.restart();
+        else if (key !== "autoRestart" && key !== "randomFavorite" && key !== "randomCombo") reapplyTimer.restart();
     }
     function setColorsOn(on) {
         root.weColorsOn = on;
@@ -1040,9 +1033,9 @@ MouseArea {
                             chipIcon: root.g("randomCombo") ? "shuffle_on" : "shuffle"
                             chipLabel: root.g("randomCombo") ? "Random at login: on" : "Random at login: off"
                             toggled: !!root.g("randomCombo")
-                            onClicked: root.setRandomMode(root.g("randomCombo") ? "off" : "combo")
+                            onClicked: root.setGlobal("randomCombo", !root.g("randomCombo"))
                             StyledToolTip {
-                                text: "When on, every login starts with a random saved combo, each wallpaper on its own display"
+                                text: "When on, every login starts with a random saved combo. With random favorites on too, it picks from both"
                             }
                         }
                         HeaderChip { // Favorites tab only: start each login with a random favorite
@@ -1050,9 +1043,9 @@ MouseArea {
                             chipIcon: root.g("randomFavorite") ? "shuffle_on" : "shuffle"
                             chipLabel: root.g("randomFavorite") ? "Random at login: on" : "Random at login: off"
                             toggled: !!root.g("randomFavorite")
-                            onClicked: root.setRandomMode(root.g("randomFavorite") ? "off" : "favorite")
+                            onClicked: root.setGlobal("randomFavorite", !root.g("randomFavorite"))
                             StyledToolTip {
-                                text: "When on, every login starts with a random wallpaper from your favorites"
+                                text: "When on, every login starts with a random favorite. With random combos on too, it picks from both"
                             }
                         }
                         HeaderChip {
@@ -1647,18 +1640,18 @@ MouseArea {
                                         StyledSwitch {
                                             checked: root.g("randomFavorite")
                                             onClicked: {
-                                                root.setRandomMode(checked ? "favorite" : "off");
+                                                root.setGlobal("randomFavorite", checked);
                                                 checked = Qt.binding(() => root.g("randomFavorite"));
                                             }
                                         }
                                     }
                                     SettingsRow {
                                         rowText: "Random combo at login"
-                                        rowHint: "Each login starts with a random saved combo (Combos tab), each wallpaper on its own display"
+                                        rowHint: "Each login starts with a random saved combo (Combos tab). With random favorite on too, it picks from both"
                                         StyledSwitch {
                                             checked: !!root.g("randomCombo")
                                             onClicked: {
-                                                root.setRandomMode(checked ? "combo" : "off");
+                                                root.setGlobal("randomCombo", checked);
                                                 checked = Qt.binding(() => !!root.g("randomCombo"));
                                             }
                                         }
