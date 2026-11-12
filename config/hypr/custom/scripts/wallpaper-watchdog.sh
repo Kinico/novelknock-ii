@@ -5,6 +5,7 @@
 # - If a monitor is turned off and on (or plugged back in), it restarts the engine so the wallpaper comes back.
 # - Waits for every monitor the wallpaper uses to be present before starting it.
 # - Keeps a separate zoom / X / Y for every wallpaper (view-presets.json), swapping view.json when the wallpaper changes.
+# - Matches the theme colors to each wallpaper (wallpaper-colors.sh), unless turned off in the Knock sidebar.
 # - Pause it:  touch ~/.local/state/wallpaper-watchdog/paused   (remove the file to resume)
 # - Log:       ~/.local/state/wallpaper-watchdog/log
 STATE="${XDG_STATE_HOME:-$HOME/.local/state}/wallpaper-watchdog"
@@ -80,6 +81,10 @@ sync_presets() {
         presets sync "$key" "${bgs[@]}"
         [ -n "$last_key" ] && log "wallpaper changed to $key, loaded its zoom / X / Y"
         last_key=$key
+        # theme colors for this wallpaper (in the background, it waits for the engine's picture)
+        local started
+        started=$(stat -c %Y "/proc/$pid" 2>/dev/null || date +%s)
+        setsid bash "$(dirname "$(readlink -f "$0")")/wallpaper-colors.sh" auto "$started" >/dev/null 2>&1 9>&- < /dev/null &
         view_mtime=$(stat -c %y "$VIEW" 2>/dev/null)
         return
     fi

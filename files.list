@@ -14,6 +14,7 @@ quickshell/ii/modules/ii/sidebarRight/volumeMixer/VolumeMixerEntry.qml
 hypr/hyprland/keybinds.lua
 hypr/hyprland/execs.lua
 hypr/custom/scripts/wallpaper-watchdog.sh
+hypr/custom/scripts/wallpaper-colors.sh
 hypr/custom/keybinds.lua
 hypr/custom/rules.lua
 hypr/custom/env.lua

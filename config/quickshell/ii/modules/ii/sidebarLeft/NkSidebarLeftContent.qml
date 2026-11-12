@@ -912,6 +912,109 @@ Item {
                     }
                 }
 
+                Card { // Theme colors follow the Wallpaper Engine wallpaper (wallpaper-colors.sh)
+                    id: wallColorsCard
+                    Layout.fillWidth: true
+                    implicitHeight: 46
+                    property var cfg: ({})
+                    readonly property bool enabled_: cfg.enabled !== false
+                    readonly property string colorHex: cfg.current?.color ?? ""
+                    readonly property int count: cfg.current?.count ?? 0
+                    readonly property int pick: (cfg.picks ?? {})[cfg.current?.key ?? ""] ?? 0
+                    readonly property string script: FileUtils.trimFileProtocol(`${Directories.config}/hypr/custom/scripts/wallpaper-colors.sh`)
+                    property bool busy: false
+
+                    function run(action) {
+                        wallColorsCard.busy = true;
+                        busyTimer.restart();
+                        Quickshell.execDetached(["bash", wallColorsCard.script, action]);
+                    }
+
+                    FileView {
+                        id: colorsFile
+                        path: FileUtils.trimFileProtocol(`${Directories.config}/linux-wallpaperengine/colors.json`)
+                        watchChanges: true
+                        onFileChanged: reload()
+                        onLoaded: {
+                            try {
+                                wallColorsCard.cfg = JSON.parse(colorsFile.text());
+                            } catch (e) {
+                                wallColorsCard.cfg = {};
+                            }
+                            wallColorsCard.busy = false;
+                        }
+                    }
+                    Timer {
+                        id: busyTimer
+                        interval: 4000
+                        onTriggered: wallColorsCard.busy = false
+                    }
+
+                    RowLayout {
+                        anchors {
+                            fill: parent
+                            leftMargin: 12
+                            rightMargin: 10
+                        }
+                        spacing: 8
+                        MaterialSymbol {
+                            text: "palette"
+                            iconSize: 18
+                            color: root.textColor
+                        }
+                        NkText {
+                            Layout.fillWidth: true
+                            text: wallColorsCard.busy ? "Matching colors..." : "Match colors to wallpaper"
+                            font.pixelSize: 13
+                            elide: Text.ElideRight
+                        }
+                        Rectangle { // current theme color
+                            visible: wallColorsCard.enabled_ && wallColorsCard.colorHex.length > 0
+                            implicitWidth: 18
+                            implicitHeight: 18
+                            radius: 9
+                            color: wallColorsCard.colorHex.length > 0 ? wallColorsCard.colorHex : "transparent"
+                            border.width: 1
+                            border.color: ColorUtils.transparentize(root.textColor, 0.6)
+                        }
+                        Rectangle { // Next color
+                            visible: wallColorsCard.enabled_ && wallColorsCard.count > 1
+                            implicitWidth: nextColorRow.implicitWidth + 16
+                            implicitHeight: 28
+                            radius: 8
+                            color: nextColorMouse.containsMouse ? Appearance.colors.colLayer1Hover : root.sectionColor
+                            RowLayout {
+                                id: nextColorRow
+                                anchors.centerIn: parent
+                                spacing: 4
+                                NkText {
+                                    text: `Next ${wallColorsCard.pick % Math.max(1, wallColorsCard.count) + 1}/${wallColorsCard.count}`
+                                    font.pixelSize: 12
+                                }
+                                MaterialSymbol {
+                                    text: "arrow_forward"
+                                    iconSize: 14
+                                    color: root.textColor
+                                }
+                            }
+                            MouseArea {
+                                id: nextColorMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: wallColorsCard.run("next")
+                            }
+                        }
+                        StyledSwitch {
+                            checked: wallColorsCard.enabled_
+                            onClicked: {
+                                wallColorsCard.run(checked ? "on" : "off");
+                                checked = Qt.binding(() => wallColorsCard.enabled_);
+                            }
+                        }
+                    }
+                }
+
                 RowLayout { // Reload config + Reload wallpaper
                     Layout.fillWidth: true
                     spacing: 6

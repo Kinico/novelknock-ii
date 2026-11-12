@@ -1,4 +1,5 @@
-# linux-wallpaperengine with NovelKnock per-monitor zoom + X/Y offset
+# linux-wallpaperengine with NovelKnock per-monitor zoom + X/Y offset, and a saved picture of
+# the wallpaper (~/.cache/linux-wallpaperengine/wallpaper.jpg) so the theme colors can follow it
 # (reads ~/.config/linux-wallpaperengine/view.json, changed live from the Knock sidebar)
 # Based on the upstream Arch PKGBUILD by Alexis Maiquez <aur@almamu.com>
 pkgname=linux-wallpaperengine-novelknock-git
@@ -6,7 +7,7 @@ _pkgname=linux-wallpaperengine
 _srcdir=linux-wallpaperengine-src
 _commit=a0ddce586e9ff12e9d31ca6b103f6036cc1b68fe # the commit the patch was made against
 pkgver=r643.a0ddce58
-pkgrel=1
+pkgrel=2
 pkgdesc="Steam's Wallpaper Engine on Linux, with per-monitor zoom and position"
 arch=('x86_64')
 url="https://github.com/Almamu/linux-wallpaperengine"

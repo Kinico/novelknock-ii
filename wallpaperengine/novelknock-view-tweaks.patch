@@ -1,3 +1,31 @@
+diff --git a/src/WallpaperEngine/Application/ApplicationContext.cpp b/src/WallpaperEngine/Application/ApplicationContext.cpp
+index e86f750..6998df5 100644
+--- a/src/WallpaperEngine/Application/ApplicationContext.cpp
++++ b/src/WallpaperEngine/Application/ApplicationContext.cpp
+@@ -671,6 +671,23 @@ void ApplicationContext::loadSettingsFromArgv () {
+ 	this->settings.screenshot.delay
+ 	    = std::max<uint32_t> (0, std::min<uint32_t> (this->settings.screenshot.delay, 5));
+ 
++	// NovelKnock: always save a picture of the wallpaper about 3 seconds after it loads
++	// (~/.cache/linux-wallpaperengine/wallpaper.jpg) so the desktop theme colors can follow it
++	if (!this->settings.screenshot.take) {
++	    const char* xdgCache = std::getenv ("XDG_CACHE_HOME");
++	    const char* home = std::getenv ("HOME");
++	    const std::filesystem::path cacheDir = (xdgCache && *xdgCache)
++		? std::filesystem::path (xdgCache)
++		: std::filesystem::path (home ? home : "/tmp") / ".cache";
++	    std::error_code ec;
++	    std::filesystem::create_directories (cacheDir / "linux-wallpaperengine", ec);
++	    if (!ec) {
++		this->settings.screenshot.take = true;
++		this->settings.screenshot.delay = 90;
++		this->settings.screenshot.path = cacheDir / "linux-wallpaperengine" / "wallpaper.jpg";
++	    }
++	}
++
+ 	// use std::cout on this in case logging is disabled, this way it's easy to look at what is running
+ 	std::stringbuf buffer;
+ 	std::ostream bufferStream (&buffer);
 diff --git a/src/WallpaperEngine/Render/CWallpaper.cpp b/src/WallpaperEngine/Render/CWallpaper.cpp
 index d0f7eab..5807414 100644
 --- a/src/WallpaperEngine/Render/CWallpaper.cpp

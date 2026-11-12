@@ -21,6 +21,13 @@ Run the same line again any time to update.
 - `restore-novelknock.sh` put everything back after an update resets it (then locks it)
 - `lock-novelknock.sh` / `unlock-novelknock.sh`  lock or unlock the files against changes
 
+## Live wallpaper extras
+- `wallpaper-watchdog.sh` restarts linux-wallpaperengine if it dies or a monitor comes back,
+  and keeps a separate zoom / X / Y for every wallpaper.
+- `wallpaper-colors.sh` matches the theme colors to the wallpaper (toggle and "Next color" in the
+  Knock sidebar). It reads a picture of the live wallpaper saved by the patched engine in
+  `wallpaperengine/` (rebuild it with `makepkg -si` there), or the wallpaper's preview image.
+
 The list of saved files is in `files.list`.
 
 Based on end-4/dots-hyprland (https://github.com/end-4/dots-hyprland), GPL-3.0.
