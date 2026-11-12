@@ -24,7 +24,10 @@ ENGINE_DIR="/opt/linux-wallpaperengine"
 STEAM="$HOME/.local/share/Steam"
 SETTINGS="$HOME/.config/linux-wallpaperengine/wallpaper-settings.json"
 GLOBAL="$HOME/.config/linux-wallpaperengine/global-settings.json"
+PATTERN='(^|/)linux-wallpaperengine( |$)'
+SELF="$(readlink -f "$0")"
 mkdir -p "$STATE" "$(dirname "$SETTINGS")"
+log() { echo "$(date '+%F %T') $*" >> "$STATE/log"; }
 
 workshop_dirs() {
     {
@@ -39,16 +42,13 @@ workshop_dirs() {
 start_engine() {   # start_engine <args file>
     mapfile -t cmd < "$1"
     [ "${#cmd[@]}" -gt 0 ] || return 1
-    pkill -f '(^|/)linux-wallpaperengine( |$)'
+    pkill -f "$PATTERN"
     sleep 0.5
-    pgrep -f '(^|/)linux-wallpaperengine( |$)' >/dev/null && pkill -9 -f '(^|/)linux-wallpaperengine( |$)'
+    pgrep -f "$PATTERN" >/dev/null && pkill -9 -f "$PATTERN"
     local dir
     dir=$(cat "$CWD" 2>/dev/null)
-    (
-        cd "${dir:-$ENGINE_DIR}" 2>/dev/null || cd "$ENGINE_DIR" || exit
-        export LD_LIBRARY_PATH="$ENGINE_DIR/lib:$LD_LIBRARY_PATH"
-        setsid "${cmd[@]}" >/dev/null 2>&1 < /dev/null &
-    )
+    # runs the engine through "__run" below, which keeps the start of its output in engine.log
+    setsid bash "$SELF" __run "$1" "${dir:-$ENGINE_DIR}" >/dev/null 2>&1 < /dev/null 7>&- &
 }
 
 # build the engine command: build_args <dir|-> <screen|all>   ("-" keeps the current wallpapers)
@@ -230,17 +230,46 @@ print(json.dumps(items))
     restore)
         [ -s "$PICKED" ] && start_engine "$PICKED"
         ;;
+    __run)   # internal: run the engine, keep the first 256 KB of what it prints for troubleshooting
+        mapfile -t cmd < "$2"
+        cd "$3" 2>/dev/null || cd "$ENGINE_DIR" || exit 1
+        export LD_LIBRARY_PATH="$ENGINE_DIR/lib:$LD_LIBRARY_PATH"
+        "${cmd[@]}" 2>&1 | { head -c 262144 > "$STATE/engine.log"; cat > /dev/null; }
+        ;;
     boot)
-        pgrep -f '(^|/)linux-wallpaperengine( |$)' >/dev/null && exit 0     # already running
+        exec 7>"$STATE/boot.lock"
+        flock -n 7 || exit 0
+        # A watchdog (and engine) from the previous login can outlive the logout. It can no longer talk
+        # to Hyprland and it blocks the new watchdog, so the wallpaper would never come back.
+        pkill -f 'wallpaper-watchdog\.sh' 2>/dev/null
+        pkill -f "$PATTERN" 2>/dev/null
+        # wait until the monitors have settled (same list twice in a row, up to ~10 s)
+        prev=""
+        for _ in 1 2 3 4 5 6 7 8 9 10; do
+            cur=$(hyprctl monitors 2>/dev/null | awk '/^Monitor /{print $2}' | sort | tr '\n' ' ')
+            [ -n "$cur" ] && [ "$cur" = "$prev" ] && break
+            prev=$cur
+            sleep 1
+        done
         if [ -s "$ARGS" ]; then
             # last wallpapers per display, rebuilt for the monitors connected right now
             build_args - all > "$PICKED.tmp" && mv "$PICKED.tmp" "$PICKED" && args_key "$PICKED" > "$STATE/picked-key"
         fi
         if [ -s "$PICKED" ]; then
-            start_engine "$PICKED"
+            log "login: starting your wallpaper ($(cat "$STATE/picked-key" 2>/dev/null)) on: $cur"
+            for try in 1 2 3; do
+                start_engine "$PICKED"
+                sleep 5
+                pgrep -f "$PATTERN" >/dev/null && break
+                log "login: the wallpaper stopped right after starting (try $try). Its output is in $STATE/engine.log"
+                cp "$STATE/engine.log" "$STATE/engine-failed.log" 2>/dev/null
+            done
         elif command -v wallpaperx >/dev/null; then
-            setsid wallpaperx >/dev/null 2>&1 < /dev/null &    # first time ever: let the app start one
+            log "login: no saved wallpaper yet, opening wallpaperx once"
+            setsid wallpaperx >/dev/null 2>&1 < /dev/null 7>&- &    # first time ever: let the app start one
         fi
+        # the watchdog starts from here, after the old one is gone
+        setsid bash "$(dirname "$SELF")/wallpaper-watchdog.sh" >/dev/null 2>&1 < /dev/null 7>&- &
         ;;
     props)
         python3 - "${2%/}/project.json" "$GLOBAL" "${XDG_CACHE_HOME:-$HOME/.cache}/novelknock/translations.json" <<'PYEOF'

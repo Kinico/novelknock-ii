@@ -42,7 +42,7 @@ wallpaper_key() {   # workshop id(s) of the wallpaper(s) in the saved command
 }
 
 presets() {   # presets <sync|store> <key> <bg paths...>
-    NK_ARGS="$ARGS" python3 - "$VIEWDIR" "$@" <<'PYEOF'
+    NK_ARGS="$ARGS" python3 - "$VIEWDIR/" "$@" <<'PYEOF'
 import json, os, sys
 d, action, key, bgs = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4:]
 os.makedirs(d, exist_ok=True)
@@ -163,12 +163,23 @@ missing=0
 restarts=()
 last_key=""
 restore_tried=""
+nohypr=0
 last_mons=$(monitors)
 while true; do
     sleep 2
 
     # ---- monitor turned off/on or plugged in ----
     mons=$(monitors)
+    if [ -z "$mons" ]; then
+        # Hyprland does not answer: you logged out. Quit, so this watchdog can't linger and block the next one.
+        nohypr=$((nohypr + 1))
+        if [ "$nohypr" -ge 8 ]; then
+            log "Hyprland is gone (logged out), watchdog exiting"
+            exit 0
+        fi
+    else
+        nohypr=0
+    fi
     if [ -n "$mons" ] && [ "$mons" != "$last_mons" ]; then
         sleep 2                                   # let the monitor settle
         mons2=$(monitors)
