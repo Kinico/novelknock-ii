@@ -12,12 +12,17 @@ quickshell/ii/services/HyprlandData.qml
 quickshell/ii/modules/ii/sidebarRight/volumeMixer/VolumeDialogContent.qml
 quickshell/ii/modules/ii/sidebarRight/volumeMixer/VolumeMixerEntry.qml
 quickshell/ii/modules/ii/wallpaperSelector/WallpaperSelectorContent.qml
+quickshell/ii/modules/common/Persistent.qml
+quickshell/ii/modules/ii/overlay/OverlayContext.qml
+quickshell/ii/modules/ii/overlay/OverlayWidgetDelegateChooser.qml
+quickshell/ii/modules/ii/overlay/perfHud/PerfHud.qml
 hypr/hyprland/keybinds.lua
 hypr/hyprland/execs.lua
 hypr/custom/scripts/wallpaper-watchdog.sh
 hypr/custom/scripts/wallpaper-colors.sh
 hypr/custom/scripts/wallpaper-apply.sh
 hypr/custom/scripts/workshop.mjs
+hypr/custom/scripts/perf-hud.sh
 hypr/custom/keybinds.lua
 hypr/custom/rules.lua
 hypr/custom/env.lua
