@@ -47,6 +47,42 @@ Scope {
         objects: Audio.outputAppNodes
     }
 
+    // ===== Cover art =====
+    // The picture is downloaded with curl (3 tries) into a small cache and shown from there.
+    // Loading it straight from the web sometimes failed and then stayed blank for the whole song.
+    readonly property string artWanted: (root.player?.trackArtUrl ?? "").replace("https://open.spotify.com/image/", "https://i.scdn.co/image/")
+    property string artFile: ""
+    readonly property string artScript: 'd="${XDG_CACHE_HOME:-$HOME/.cache}/novelknock/coverart"; mkdir -p "$d"; f="$d/$1"; if [ ! -s "$f" ]; then curl -fsSL --retry 3 --retry-delay 1 --max-time 20 -o "$f.tmp" "$2" && mv "$f.tmp" "$f"; find "$d" -type f -mtime +30 -delete 2>/dev/null; fi; [ -s "$f" ] && echo "$f"'
+    function fetchArt() {
+        const url = root.artWanted;
+        if (url.length === 0) {
+            root.artFile = "";
+        } else if (url.startsWith("file://") || url.startsWith("/")) {
+            root.artFile = url;
+        } else {
+            artFetchComp.createObject(root, { artUrl: url, artKey: Qt.md5(url) });
+        }
+    }
+    onArtWantedChanged: root.fetchArt()
+    Component {
+        id: artFetchComp
+        Process {
+            id: artFetch
+            property string artUrl
+            property string artKey
+            command: ["bash", "-c", root.artScript, "art", artFetch.artKey, artFetch.artUrl]
+            running: true
+            stdout: StdioCollector {
+                id: artOut
+                onStreamFinished: {
+                    const f = artOut.text.trim();
+                    if (artFetch.artUrl === root.artWanted) root.artFile = f.length > 0 ? `file://${f}` : "";
+                    Qt.callLater(() => artFetch.destroy());
+                }
+            }
+        }
+    }
+
     // ===== Visualizer =====
     // cava stays running while music plays. Starting it opens an audio capture stream, and doing that
     // every time the sheet opened is what made the sound hiccup for a moment.
@@ -65,6 +101,7 @@ Scope {
     }
     Component.onCompleted: {
         if (root.cavaWanted) cavaProc.running = true;
+        root.fetchArt();
     }
     Timer { // stop cava 2 minutes after the music stops
         id: cavaStopTimer
@@ -307,7 +344,7 @@ Scope {
             Image {
                 id: coverSource
                 visible: false
-                source: root.player?.trackArtUrl ?? ""
+                source: root.artFile
                 asynchronous: true
                 fillMode: Image.PreserveAspectCrop
                 sourceSize.width: 600
@@ -602,7 +639,8 @@ Scope {
 
     PanelWindow { // fullscreen music view with lyrics
         id: fsWindow
-        visible: root.fullscreen
+        // stays up until the slide-down has finished, like the small sheet
+        visible: root.fullscreen || fsRoot.y < fsRoot.offY - 1
         screen: root.fsScreen ?? Quickshell.screens[0]
         exclusionMode: ExclusionMode.Ignore
         exclusiveZone: 0
@@ -619,7 +657,19 @@ Scope {
 
         Rectangle {
             id: fsRoot
-            anchors.fill: parent
+            // slides up from the bottom to open and back down to close
+            readonly property real offY: (fsWindow.screen?.height ?? 1080) + 10
+            x: 0
+            width: parent.width
+            height: parent.height
+            y: root.fullscreen ? 0 : offY
+            Behavior on y {
+                NumberAnimation {
+                    duration: 380
+                    easing.type: Easing.BezierSpline
+                    easing.bezierCurve: [0.05, 0.7, 0.1, 1, 1, 1]
+                }
+            }
             color: ColorUtils.mix(Appearance.colors.colLayer0Base, "#000000", 0.5)
             focus: true
             Keys.onPressed: event => {
@@ -646,7 +696,7 @@ Scope {
                 id: fsCover
                 anchors.fill: parent
                 visible: false
-                source: root.player?.trackArtUrl ?? ""
+                source: root.artFile
                 asynchronous: true
                 fillMode: Image.PreserveAspectCrop
                 sourceSize.width: 480
