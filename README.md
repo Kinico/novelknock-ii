@@ -27,6 +27,10 @@ Run the same line again any time to update.
 - `wallpaper-colors.sh` matches the theme colors to the wallpaper (toggle and "Next color" in the
   Knock sidebar). It reads a picture of the live wallpaper saved by the patched engine in
   `wallpaperengine/` (rebuild it with `makepkg -si` there), or the wallpaper's preview image.
+- **Super+Z** opens your Wallpaper Engine library first (filters: type, age rating, sort; type to search).
+  The **Workshop** tab browses Steam Workshop like the wallpaperx app (Trending, Most popular, Newest,
+  type and rating filters, search) and **Subscribe** downloads through Steam. One-time setup:
+  `bash workshop-setup.sh` (installs Node.js and steamworks.js). Steam must be running.
 
 The list of saved files is in `files.list`.
 

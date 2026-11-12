@@ -6,6 +6,7 @@
 # - Waits for every monitor the wallpaper uses to be present before starting it.
 # - Keeps a separate zoom / X / Y for every wallpaper (view-presets.json), swapping view.json when the wallpaper changes.
 # - Matches the theme colors to each wallpaper (wallpaper-colors.sh), unless turned off in the Knock sidebar.
+# - Keeps a wallpaper picked with Super+Z after logging in again (wallpaper-apply.sh).
 # - Pause it:  touch ~/.local/state/wallpaper-watchdog/paused   (remove the file to resume)
 # - Log:       ~/.local/state/wallpaper-watchdog/log
 STATE="${XDG_STATE_HOME:-$HOME/.local/state}/wallpaper-watchdog"
@@ -77,6 +78,19 @@ sync_presets() {
     key=$(wallpaper_key)
     [ -n "$key" ] || return
     if [ "$key" != "$last_key" ]; then
+        local picked
+        picked=$(cat "$STATE/picked-key" 2>/dev/null)
+        if [ -z "$last_key" ] && [ -n "$picked" ] && [ "$key" != "$picked" ] && [ -z "$restore_tried" ]; then
+            # login: the app started its own wallpaper, but the last one was picked with Super+Z
+            restore_tried=1
+            log "restoring the wallpaper picked with Super+Z ($picked)"
+            bash "$(dirname "$(readlink -f "$0")")/wallpaper-apply.sh" restore 9>&-
+            return
+        fi
+        if [ -n "$last_key" ] && [ -n "$picked" ] && [ "$key" != "$picked" ]; then
+            # changed in the app: let the app's choice win from now on
+            rm -f "$STATE/picked-key" "$STATE/picked-args"
+        fi
         mapfile -t bgs < <(awk 'p=="--bg"{print} {p=$0}' "$ARGS")
         presets sync "$key" "${bgs[@]}"
         [ -n "$last_key" ] && log "wallpaper changed to $key, loaded its zoom / X / Y"
@@ -118,6 +132,7 @@ start_engine() {
 missing=0
 restarts=()
 last_key=""
+restore_tried=""
 last_mons=$(monitors)
 while true; do
     sleep 2
