@@ -61,6 +61,7 @@ MouseArea {
     property var prefs: ({ libType: "all", libRating: "all", libSort: "newest", libFav: false, wsSort: "trend", wsType: "all", wsRating: "all" })
     // favorite wallpapers (ids), kept in ~/.config/linux-wallpaperengine/favorites.json
     property var weFavs: []
+    readonly property bool libTab: root.weTab === "library" || root.weTab === "favorites" // both show the library grid
     function isFav(id) {
         return root.weFavs.includes(id);
     }
@@ -101,7 +102,7 @@ MouseArea {
         const q = root.weFilter.toLowerCase().trim();
         let list = root.weItems.filter(i => (root.prefs.libType === "all" || i.type === root.prefs.libType)
             && (root.prefs.libRating === "all" || (i.rating ?? "Everyone") === root.prefs.libRating)
-            && (!root.prefs.libFav || root.weFavs.includes(i.id))
+            && (root.weTab !== "favorites" || root.weFavs.includes(i.id))
             && (q.length === 0 || i.title.toLowerCase().includes(q) || i.id.includes(q)));
         if (root.prefs.libSort === "title") list = list.slice().sort((a, b) => a.title.localeCompare(b.title));
         return list;
@@ -903,6 +904,12 @@ MouseArea {
                             onClicked: root.setWeTab("library")
                         }
                         HeaderChip {
+                            chipIcon: "star"
+                            chipLabel: `Favorites ${root.weFavs.length}`
+                            toggled: root.weTab === "favorites"
+                            onClicked: root.setWeTab("favorites")
+                        }
+                        HeaderChip {
                             chipIcon: "storefront"
                             chipLabel: "Workshop"
                             toggled: root.weTab === "workshop"
@@ -919,29 +926,32 @@ MouseArea {
                         }
 
                         // Library filters (click to switch)
-                        HeaderChip {
-                            visible: root.weTab === "library"
-                            chipIcon: "star"
-                            chipLabel: `Favorites ${root.weFavs.length}`
-                            toggled: !!root.prefs.libFav
-                            onClicked: root.setPref("libFav", !root.prefs.libFav)
+                        HeaderChip { // Favorites tab only: start each login with a random favorite
+                            visible: root.weTab === "favorites"
+                            chipIcon: root.g("randomFavorite") ? "shuffle_on" : "shuffle"
+                            chipLabel: root.g("randomFavorite") ? "Random at login: on" : "Random at login: off"
+                            toggled: !!root.g("randomFavorite")
+                            onClicked: root.setGlobal("randomFavorite", !root.g("randomFavorite"))
+                            StyledToolTip {
+                                text: "When on, every login starts with a random wallpaper from your favorites"
+                            }
                         }
                         HeaderChip {
-                            visible: root.weTab === "library"
+                            visible: root.libTab
                             chipIcon: "category"
                             chipLabel: root.typeNames[root.prefs.libType]
                             toggled: root.prefs.libType !== "all"
                             onClicked: root.setPref("libType", root.cycle(["all", "scene", "video", "web"], root.prefs.libType))
                         }
                         HeaderChip {
-                            visible: root.weTab === "library"
+                            visible: root.libTab
                             chipIcon: "shield"
                             chipLabel: root.ratingNames[root.prefs.libRating]
                             toggled: root.prefs.libRating !== "all"
                             onClicked: root.setPref("libRating", root.cycle(["all", "Everyone", "Questionable", "Mature"], root.prefs.libRating))
                         }
                         HeaderChip {
-                            visible: root.weTab === "library"
+                            visible: root.libTab
                             chipIcon: "sort"
                             chipLabel: root.libSortNames[root.prefs.libSort]
                             onClicked: root.setPref("libSort", root.cycle(["newest", "title"], root.prefs.libSort))
@@ -1106,7 +1116,7 @@ MouseArea {
 
                     GridView { // Wallpaper Engine wallpapers
                         id: weGrid
-                        visible: root.weMode && root.weTab === "library"
+                        visible: root.weMode && root.libTab
                         property int currentIndex: 0
                         anchors.fill: parent
                         cellWidth: width / root.columns
@@ -1428,7 +1438,7 @@ MouseArea {
                     ColumnLayout { // loading / Steam not open / nothing found
                         anchors.centerIn: parent
                         visible: root.weMode && ((root.weTab === "workshop" && (root.wsLoading || root.wsError.length > 0 || root.wsItems.length === 0))
-                            || (root.weTab === "library" && (root.weLoading || root.weFiltered.length === 0)))
+                            || (root.libTab && (root.weLoading || root.weFiltered.length === 0)))
                         spacing: 8
                         MaterialSymbol {
                             Layout.alignment: Qt.AlignHCenter
@@ -1444,7 +1454,7 @@ MouseArea {
                             color: Appearance.colors.colSubtext
                             text: root.weTab === "workshop"
                                 ? (root.wsLoading ? "Loading the Workshop..." : root.wsError.length > 0 ? root.wsError : "Nothing found")
-                                : (root.weLoading ? "Loading your library..." : "No wallpapers match these filters")
+                                : (root.weLoading ? "Loading your library..." : root.weTab === "favorites" && root.weFavs.length === 0 ? "No favorites yet. In Library, hover a wallpaper and click the star in its corner." : "No wallpapers match these filters")
                         }
                     }
 
