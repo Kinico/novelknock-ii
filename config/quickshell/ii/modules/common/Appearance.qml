@@ -408,8 +408,8 @@ Singleton {
         property real baseVerticalBarWidth: 46
         property real verticalBarWidth: Config.options.bar.cornerStyle === 1 ? 
             (baseVerticalBarWidth + root.sizes.hyprlandGapsOut * 2) : baseVerticalBarWidth
-        property real wallpaperSelectorWidth: 1200
-        property real wallpaperSelectorHeight: 690
+        property real wallpaperSelectorWidth: 1580 // NovelKnock: room for the details panel (stock ii is 1200)
+        property real wallpaperSelectorHeight: 760 // NovelKnock (stock ii is 690)
         property real wallpaperSelectorItemMargins: 8
         property real wallpaperSelectorItemPadding: 6
     }

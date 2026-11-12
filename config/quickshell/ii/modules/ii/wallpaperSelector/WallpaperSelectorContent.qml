@@ -19,8 +19,8 @@ MouseArea {
     // ===== NovelKnock: Wallpaper Engine library + Steam Workshop in this picker =====
     component HeaderChip: RippleButton {
         id: chip
-        property string label
-        property string icon
+        property string chipLabel
+        property string chipIcon
         implicitHeight: 32
         implicitWidth: chipRow.implicitWidth + 22
         buttonRadius: 16
@@ -33,13 +33,13 @@ MouseArea {
                 anchors.centerIn: parent
                 spacing: 4
                 MaterialSymbol {
-                    visible: chip.icon.length > 0
-                    text: chip.icon
+                    visible: chip.chipIcon.length > 0
+                    text: chip.chipIcon
                     iconSize: Appearance.font.pixelSize.normal
                     color: chip.toggled ? Appearance.colors.colOnSecondaryContainer : Appearance.colors.colOnLayer1
                 }
                 StyledText {
-                    text: chip.label
+                    text: chip.chipLabel
                     font.pixelSize: Appearance.font.pixelSize.small
                     color: chip.toggled ? Appearance.colors.colOnSecondaryContainer : Appearance.colors.colOnLayer1
                 }
@@ -114,6 +114,11 @@ MouseArea {
                     root.weItems = [];
                 }
                 root.weLoading = false;
+                if (!root.weSel) {
+                    const playing = Object.values(root.weScreens);
+                    const found = root.weItems.find(i => playing.includes(i.id));
+                    if (found) root.weSelect(found);
+                }
             }
         }
     }
@@ -133,13 +138,341 @@ MouseArea {
         onFileChanged: reload()
         onLoaded: {
             try {
-                root.weCurrent = JSON.parse(weCurrentFile.text()).key ?? "";
+                const info = JSON.parse(weCurrentFile.text());
+                root.weCurrent = info.key ?? "";
+                root.weScreens = info.screens ?? ({});
             } catch (e) {
                 root.weCurrent = "";
+                root.weScreens = ({});
             }
         }
     }
     Component.onCompleted: root.weRefresh()
+
+    // ----- details panel: selection, info, per-display apply, per-wallpaper settings -----
+    property var weSel: null          // selected library wallpaper
+    property var wsSel: null          // selected Workshop wallpaper
+    property var weScreens: ({})      // display name -> wallpaper id playing there
+    property var weSettings: ({})     // id -> { scaling, volume, audio, mouse, parallax, particles }
+    property var weInfo: ({})         // size / resolution of the selected wallpaper
+    property bool weDisplayMenu: false
+    property bool weDeleteArmed: false
+    property string weMessage: ""
+    readonly property var weDefaults: ({ scaling: "fill", volume: 0, audio: true, mouse: true, parallax: true, particles: true })
+
+    function weSelect(item) {
+        root.weSel = item;
+        root.weDisplayMenu = false;
+        root.weDeleteArmed = false;
+        root.weMessage = "";
+        root.weInfo = ({});
+        if (item) {
+            weInfoProc.running = false;
+            weInfoProc.command = ["bash", root.weScript, "info", item.dir];
+            weInfoProc.running = true;
+        }
+    }
+    function weShowingOn(id) {
+        return Object.keys(root.weScreens).filter(s => root.weScreens[s] === id);
+    }
+    function weApplyTo(dir, screen) {
+        if (!dir) return;
+        Quickshell.execDetached(["bash", root.weScript, "apply", dir].concat(screen ? [screen] : []));
+        filterField.text = "";
+        GlobalStates.wallpaperSelectorOpen = false;
+    }
+    function weSetting(id, key) {
+        const s = root.weSettings[id] ?? {};
+        return s[key] !== undefined ? s[key] : root.g(key);   // unset uses the Settings page default
+    }
+    function weSetSetting(id, key, value) {
+        const all = Object.assign({}, root.weSettings);
+        const s = Object.assign({}, all[id] ?? {});
+        if (key === null) {
+            delete all[id];               // reset to defaults
+        } else {
+            s[key] = value;
+            all[id] = s;
+        }
+        root.weSettings = all;
+        settingsFile.setText(JSON.stringify(all, null, 2));
+        if (root.weShowingOn(id).length > 0) reapplyTimer.restart();   // playing now: apply the change
+    }
+    function weDelete(item) {
+        if (!item) return;
+        if (!root.weDeleteArmed) {
+            root.weDeleteArmed = true;
+            disarmTimer.restart();
+            return;
+        }
+        root.weDeleteArmed = false;
+        root.weMessage = "Removing...";
+        weDeleteProc.command = ["node", root.wsScript, "unsubscribe", item.id];
+        weDeleteProc.running = true;
+    }
+    function formatSize(bytes) {
+        if (!bytes) return "";
+        if (bytes >= 1073741824) return `${(bytes / 1073741824).toFixed(2)} GB`;
+        if (bytes >= 1048576) return `${(bytes / 1048576).toFixed(1)} MB`;
+        return `${Math.round(bytes / 1024)} KB`;
+    }
+
+    // ----- global settings (Settings tab) and the wallpaper's own options -----
+    readonly property var weGlobalDefaults: ({ fps: 30, pauseFullscreen: false, scaling: "fill", volume: 100, mute: true, noautomute: false, audio: true, mouse: true, parallax: true, particles: true, autoRestart: true })
+    property var weGlobal: weGlobalDefaults
+    property var weProps: []
+    property bool weColorsOn: true
+    property string wsStatus: ""
+    function g(key) {
+        return root.weGlobal[key] !== undefined ? root.weGlobal[key] : root.weGlobalDefaults[key];
+    }
+    function setGlobal(key, value) {
+        const all = Object.assign({}, root.weGlobal);
+        if (key === null) {
+            Object.keys(all).forEach(k => delete all[k]);
+            Object.assign(all, root.weGlobalDefaults);
+        } else {
+            all[key] = value;
+        }
+        root.weGlobal = all;
+        globalFile.setText(JSON.stringify(all, null, 2));
+        if (key === "autoRestart" || key === null)
+            Quickshell.execDetached(["bash", root.weScript, "autorestart", root.g("autoRestart") ? "on" : "off"]);
+        if (key !== "autoRestart") reapplyTimer.restart();
+    }
+    function setColorsOn(on) {
+        root.weColorsOn = on;
+        Quickshell.execDetached(["bash", FileUtils.trimFileProtocol(`${Directories.config}/hypr/custom/scripts/wallpaper-colors.sh`), on ? "on" : "off"]);
+    }
+    function weSetProp(id, name, value) {
+        const all = Object.assign({}, root.weSettings);
+        const s = Object.assign({}, all[id] ?? {});
+        const p = Object.assign({}, s.props ?? {});
+        p[name] = value;
+        s.props = p;
+        all[id] = s;
+        root.weSettings = all;
+        settingsFile.setText(JSON.stringify(all, null, 2));
+        if (root.weShowingOn(id).length > 0) reapplyTimer.restart();
+    }
+    function weProp(id, prop) {
+        const v = ((root.weSettings[id] ?? {}).props ?? {})[prop.name];
+        return v !== undefined ? v : prop.value;
+    }
+    function loadProps(item) {
+        root.weProps = [];
+        if (!item) return;
+        wePropsProc.running = false;
+        wePropsProc.command = ["bash", root.weScript, "props", item.dir];
+        wePropsProc.running = true;
+    }
+    onWeSelChanged: root.loadProps(root.weSel)
+    onWeTabChanged: {
+        if (root.weTab === "settings") {
+            wsStatusProc.running = false;
+            root.wsStatus = "Checking Steam...";
+            wsStatusProc.running = true;
+        }
+    }
+    Process {
+        id: wePropsProc
+        stdout: StdioCollector {
+            id: wePropsCollector
+            onStreamFinished: {
+                try {
+                    root.weProps = JSON.parse(wePropsCollector.text);
+                } catch (e) {
+                    root.weProps = [];
+                }
+            }
+        }
+    }
+    Process {
+        id: wsStatusProc
+        command: ["node", root.wsScript, "status"]
+        stdout: StdioCollector {
+            id: wsStatusCollector
+            onStreamFinished: {
+                try {
+                    const lines = wsStatusCollector.text.trim().split("\n");
+                    const r = JSON.parse(lines[lines.length - 1]);
+                    root.wsStatus = r.ok ? "Connected to Steam" : (r.message ?? "Not connected");
+                } catch (e) {
+                    root.wsStatus = "Node.js is missing. Run workshop-setup.sh once.";
+                }
+            }
+        }
+    }
+    FileView {
+        id: globalFile
+        path: `${root.weStateDir}/global-settings.json`
+        onLoaded: {
+            try {
+                root.weGlobal = Object.assign({}, root.weGlobalDefaults, JSON.parse(globalFile.text()));
+            } catch (e) {}
+        }
+    }
+    FileView {
+        id: colorsStateFile
+        path: `${root.weStateDir}/colors.json`
+        onLoaded: {
+            try {
+                root.weColorsOn = JSON.parse(colorsStateFile.text()).enabled !== false;
+            } catch (e) {}
+        }
+    }
+
+    component SettingsCard: Rectangle {
+        id: settingsCard
+        property string cardIcon
+        property string cardTitle
+        property string cardSubtitle
+        default property alias content: settingsCardRows.data
+        Layout.fillWidth: true
+        Layout.alignment: Qt.AlignTop
+        implicitHeight: settingsCardColumn.implicitHeight + 8
+        radius: Appearance.rounding.normal
+        color: Appearance.colors.colLayer1
+        ColumnLayout {
+            id: settingsCardColumn
+            anchors {
+                left: parent.left
+                right: parent.right
+                top: parent.top
+            }
+            spacing: 0
+            RowLayout {
+                Layout.fillWidth: true
+                Layout.margins: 14
+                spacing: 12
+                Rectangle {
+                    implicitWidth: 36
+                    implicitHeight: 36
+                    radius: 10
+                    color: Appearance.colors.colLayer2
+                    MaterialSymbol {
+                        anchors.centerIn: parent
+                        text: settingsCard.cardIcon
+                        iconSize: 20
+                        color: Appearance.colors.colOnLayer2
+                    }
+                }
+                ColumnLayout {
+                    spacing: 0
+                    StyledText {
+                        text: settingsCard.cardTitle
+                        font.pixelSize: Appearance.font.pixelSize.normal
+                        font.weight: Font.DemiBold
+                        color: Appearance.colors.colOnLayer1
+                    }
+                    StyledText {
+                        text: settingsCard.cardSubtitle
+                        font.pixelSize: Appearance.font.pixelSize.smaller
+                        color: Appearance.colors.colSubtext
+                    }
+                }
+            }
+            ColumnLayout {
+                id: settingsCardRows
+                Layout.fillWidth: true
+                Layout.leftMargin: 14
+                Layout.rightMargin: 14
+                Layout.bottomMargin: 8
+                spacing: 2
+            }
+        }
+    }
+    component SettingsRow: RowLayout {
+        id: settingsRow
+        property string rowText
+        property string rowHint
+        default property alias control: settingsRowControl.data
+        Layout.fillWidth: true
+        Layout.minimumHeight: 44
+        spacing: 10
+        ColumnLayout {
+            Layout.fillWidth: true
+            spacing: 0
+            StyledText {
+                Layout.fillWidth: true
+                text: settingsRow.rowText
+                color: Appearance.colors.colOnLayer1
+                wrapMode: Text.Wrap
+            }
+            StyledText {
+                Layout.fillWidth: true
+                visible: settingsRow.rowHint.length > 0
+                text: settingsRow.rowHint
+                font.pixelSize: Appearance.font.pixelSize.smaller
+                color: Appearance.colors.colSubtext
+                wrapMode: Text.Wrap
+            }
+        }
+        RowLayout {
+            id: settingsRowControl
+            spacing: 4
+        }
+    }
+    Process {
+        id: weInfoProc
+        stdout: StdioCollector {
+            id: weInfoCollector
+            onStreamFinished: {
+                try {
+                    root.weInfo = JSON.parse(weInfoCollector.text);
+                } catch (e) {
+                    root.weInfo = ({});
+                }
+            }
+        }
+    }
+    Process {
+        id: weDeleteProc
+        stdout: StdioCollector {
+            id: weDeleteCollector
+            onStreamFinished: {
+                let r = {};
+                try {
+                    const lines = weDeleteCollector.text.trim().split("\n");
+                    r = JSON.parse(lines[lines.length - 1]);
+                } catch (e) {}
+                if (r.removed) {
+                    root.weMessage = "Removed. Steam deletes the files in a moment.";
+                    root.weItems = root.weItems.filter(i => i.id !== r.id);
+                    root.weSelect(null);
+                    refreshLaterTimer.restart();
+                } else {
+                    root.weMessage = r.message ?? "Could not remove it. Is Steam open and workshop-setup.sh done?";
+                }
+            }
+        }
+    }
+    Timer {
+        id: reapplyTimer
+        interval: 900
+        onTriggered: Quickshell.execDetached(["bash", root.weScript, "reapply"])
+    }
+    Timer {
+        id: disarmTimer
+        interval: 3000
+        onTriggered: root.weDeleteArmed = false
+    }
+    Timer {
+        id: refreshLaterTimer
+        interval: 3000
+        onTriggered: root.weRefresh()
+    }
+    FileView {
+        id: settingsFile
+        path: `${root.weStateDir}/wallpaper-settings.json`
+        onLoaded: {
+            try {
+                root.weSettings = JSON.parse(settingsFile.text());
+            } catch (e) {
+                root.weSettings = ({});
+            }
+        }
+    }
 
     // ----- Steam Workshop (workshop.mjs, through your running Steam client) -----
     property var wsItems: []
@@ -408,7 +741,7 @@ MouseArea {
                         // Quick dirs
                         Layout.fillHeight: true
                         Layout.margins: 4
-                        implicitWidth: 140
+                        implicitWidth: 172
                         clip: true
                         model: [
                             {
@@ -522,16 +855,22 @@ MouseArea {
                         spacing: 4
 
                         HeaderChip {
-                            icon: "photo_library"
-                            label: root.weLoading ? "Library" : `Library ${root.weItems.length}`
+                            chipIcon: "photo_library"
+                            chipLabel: root.weLoading ? "Library" : `Library ${root.weItems.length}`
                             toggled: root.weTab === "library"
                             onClicked: root.setWeTab("library")
                         }
                         HeaderChip {
-                            icon: "storefront"
-                            label: "Workshop"
+                            chipIcon: "storefront"
+                            chipLabel: "Workshop"
                             toggled: root.weTab === "workshop"
                             onClicked: root.setWeTab("workshop")
+                        }
+                        HeaderChip {
+                            chipIcon: "settings"
+                            chipLabel: "Settings"
+                            toggled: root.weTab === "settings"
+                            onClicked: root.setWeTab("settings")
                         }
                         Item {
                             Layout.fillWidth: true
@@ -540,50 +879,50 @@ MouseArea {
                         // Library filters (click to switch)
                         HeaderChip {
                             visible: root.weTab === "library"
-                            icon: "category"
-                            label: root.typeNames[root.prefs.libType]
+                            chipIcon: "category"
+                            chipLabel: root.typeNames[root.prefs.libType]
                             toggled: root.prefs.libType !== "all"
                             onClicked: root.setPref("libType", root.cycle(["all", "scene", "video", "web"], root.prefs.libType))
                         }
                         HeaderChip {
                             visible: root.weTab === "library"
-                            icon: "shield"
-                            label: root.ratingNames[root.prefs.libRating]
+                            chipIcon: "shield"
+                            chipLabel: root.ratingNames[root.prefs.libRating]
                             toggled: root.prefs.libRating !== "all"
                             onClicked: root.setPref("libRating", root.cycle(["all", "Everyone", "Questionable", "Mature"], root.prefs.libRating))
                         }
                         HeaderChip {
                             visible: root.weTab === "library"
-                            icon: "sort"
-                            label: root.libSortNames[root.prefs.libSort]
+                            chipIcon: "sort"
+                            chipLabel: root.libSortNames[root.prefs.libSort]
                             onClicked: root.setPref("libSort", root.cycle(["newest", "title"], root.prefs.libSort))
                         }
 
                         // Workshop filters
                         HeaderChip {
                             visible: root.weTab === "workshop"
-                            icon: "trending_up"
-                            label: root.weFilter.trim().length > 0 ? "Best match" : root.wsSortNames[root.prefs.wsSort]
+                            chipIcon: "trending_up"
+                            chipLabel: root.weFilter.trim().length > 0 ? "Best match" : root.wsSortNames[root.prefs.wsSort]
                             onClicked: root.setPref("wsSort", root.cycle(["trend", "votes", "subscriptions", "date", "updated"], root.prefs.wsSort))
                         }
                         HeaderChip {
                             visible: root.weTab === "workshop"
-                            icon: "category"
-                            label: root.typeNames[root.prefs.wsType]
+                            chipIcon: "category"
+                            chipLabel: root.typeNames[root.prefs.wsType]
                             toggled: root.prefs.wsType !== "all"
                             onClicked: root.setPref("wsType", root.cycle(["all", "Scene", "Video", "Web"], root.prefs.wsType))
                         }
                         HeaderChip {
                             visible: root.weTab === "workshop"
-                            icon: "shield"
-                            label: root.ratingNames[root.prefs.wsRating]
+                            chipIcon: "shield"
+                            chipLabel: root.ratingNames[root.prefs.wsRating]
                             toggled: root.prefs.wsRating !== "all"
                             onClicked: root.setPref("wsRating", root.cycle(["all", "Everyone", "Questionable", "Mature"], root.prefs.wsRating))
                         }
                         HeaderChip {
                             visible: root.weTab === "workshop"
-                            icon: "chevron_left"
-                            label: ""
+                            chipIcon: "chevron_left"
+                            chipLabel: ""
                             implicitWidth: 32
                             enabled: root.wsPage > 1 && !root.wsLoading
                             opacity: enabled ? 1 : 0.4
@@ -597,8 +936,8 @@ MouseArea {
                         }
                         HeaderChip {
                             visible: root.weTab === "workshop"
-                            icon: "chevron_right"
-                            label: ""
+                            chipIcon: "chevron_right"
+                            chipLabel: ""
                             implicitWidth: 32
                             enabled: root.wsHasNext && !root.wsLoading
                             opacity: enabled ? 1 : 0.4
@@ -606,8 +945,9 @@ MouseArea {
                         }
 
                         HeaderChip {
-                            icon: "refresh"
-                            label: ""
+                            visible: root.weTab !== "settings"
+                            chipIcon: "refresh"
+                            chipLabel: ""
                             implicitWidth: 32
                             onClicked: root.weTab === "workshop" ? root.wsQuery(root.wsPage) : root.weRefresh()
                             StyledToolTip {
@@ -742,14 +1082,15 @@ MouseArea {
                             id: weItem
                             required property var modelData
                             required property int index
-                            readonly property bool isCurrent: modelData.id === root.weCurrent
-                            readonly property bool highlighted: index === weGrid.currentIndex || containsMouse
+                            readonly property bool isCurrent: Object.values(root.weScreens).includes(modelData.id) || modelData.id === root.weCurrent
+                            readonly property bool highlighted: root.weSel?.id === modelData.id || containsMouse
                             width: weGrid.cellWidth
                             height: weGrid.cellHeight
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
                             onEntered: weGrid.currentIndex = index
-                            onClicked: root.applyWe(modelData.dir)
+                            onClicked: root.weSelect(modelData)
+                            onDoubleClicked: root.weApplyTo(modelData.dir, "")
 
                             Rectangle {
                                 anchors {
@@ -877,13 +1218,14 @@ MouseArea {
                             readonly property var dl: root.wsDownloads[modelData.id]
                             readonly property bool downloading: typeof dl === "number"
                             readonly property bool isCurrent: modelData.id === root.weCurrent
-                            readonly property bool highlighted: index === wsGrid.currentIndex || containsMouse
+                            readonly property bool highlighted: root.wsSel?.id === modelData.id || containsMouse
                             width: wsGrid.cellWidth
                             height: wsGrid.cellHeight
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
                             onEntered: wsGrid.currentIndex = index
-                            onClicked: root.wsActivate(modelData)
+                            onClicked: root.wsSel = modelData
+                            onDoubleClicked: root.wsActivate(modelData)
 
                             Rectangle {
                                 anchors {
@@ -959,6 +1301,11 @@ MouseArea {
                                             implicitHeight: 24
                                             radius: 12
                                             color: wsItem.folder.length > 0 ? Appearance.colors.colPrimary : ColorUtils.transparentize("#000000", 0.35)
+                                            MouseArea {
+                                                anchors.fill: parent
+                                                cursorShape: Qt.PointingHandCursor
+                                                onClicked: root.wsActivate(wsItem.modelData)
+                                            }
                                             RowLayout {
                                                 id: wsActionRow
                                                 anchors.centerIn: parent
@@ -1022,6 +1369,227 @@ MouseArea {
                             text: root.weTab === "workshop"
                                 ? (root.wsLoading ? "Loading the Workshop..." : root.wsError.length > 0 ? root.wsError : "Nothing found")
                                 : (root.weLoading ? "Loading your library..." : "No wallpapers match these filters")
+                        }
+                    }
+
+                    Flickable { // Settings tab
+                        id: weSettingsPage
+                        visible: root.weMode && root.weTab === "settings"
+                        anchors.fill: parent
+                        contentHeight: weSettingsColumn.implicitHeight + extraOptions.implicitHeight + 24
+                        clip: true
+                        boundsBehavior: Flickable.StopAtBounds
+                        ScrollBar.vertical: StyledScrollBar {}
+
+                        ColumnLayout {
+                            id: weSettingsColumn
+                            anchors {
+                                left: parent.left
+                                right: parent.right
+                                top: parent.top
+                                margins: 8
+                            }
+                            spacing: 10
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 0
+                                    StyledText {
+                                        text: "Settings"
+                                        font.pixelSize: Appearance.font.pixelSize.huge
+                                        font.weight: Font.DemiBold
+                                        color: Appearance.colors.colOnLayer0
+                                    }
+                                    StyledText {
+                                        text: "Defaults for every wallpaper. A wallpaper's own settings in its details panel win over these."
+                                        font.pixelSize: Appearance.font.pixelSize.small
+                                        color: Appearance.colors.colSubtext
+                                    }
+                                }
+                                HeaderChip {
+                                    chipIcon: "restart_alt"
+                                    chipLabel: "Reset to defaults"
+                                    onClicked: root.setGlobal(null, null)
+                                }
+                            }
+
+                            GridLayout {
+                                Layout.fillWidth: true
+                                columns: 2
+                                columnSpacing: 10
+                                rowSpacing: 10
+
+                                SettingsCard {
+                                    cardIcon: "settings"
+                                    cardTitle: "General"
+                                    cardSubtitle: "Behavior"
+                                    SettingsRow {
+                                        rowText: "Pause on fullscreen apps"
+                                        rowHint: "Frees the GPU while you game or watch fullscreen"
+                                        StyledSwitch {
+                                            checked: root.g("pauseFullscreen")
+                                            onClicked: {
+                                                root.setGlobal("pauseFullscreen", checked);
+                                                checked = Qt.binding(() => root.g("pauseFullscreen"));
+                                            }
+                                        }
+                                    }
+                                    SettingsRow {
+                                        rowText: "Restart the wallpaper if it stops"
+                                        rowHint: "Also brings it back when a monitor comes back"
+                                        StyledSwitch {
+                                            checked: root.g("autoRestart")
+                                            onClicked: {
+                                                root.setGlobal("autoRestart", checked);
+                                                checked = Qt.binding(() => root.g("autoRestart"));
+                                            }
+                                        }
+                                    }
+                                    SettingsRow {
+                                        rowText: "Match theme colors to the wallpaper"
+                                        rowHint: "Bar, sidebars and apps follow the wallpaper"
+                                        StyledSwitch {
+                                            checked: root.weColorsOn
+                                            onClicked: {
+                                                root.setColorsOn(checked);
+                                                checked = Qt.binding(() => root.weColorsOn);
+                                            }
+                                        }
+                                    }
+                                }
+
+                                SettingsCard {
+                                    cardIcon: "desktop_windows"
+                                    cardTitle: "Display"
+                                    cardSubtitle: "Default display behavior"
+                                    SettingsRow {
+                                        rowText: "Maximum FPS"
+                                        Repeater {
+                                            model: [15, 30, 60, 120, 144]
+                                            delegate: HeaderChip {
+                                                required property int modelData
+                                                chipLabel: `${modelData}`
+                                                implicitWidth: 44
+                                                toggled: Number(root.g("fps")) === modelData
+                                                onClicked: root.setGlobal("fps", modelData)
+                                            }
+                                        }
+                                    }
+                                    SettingsRow {
+                                        rowText: "Default scaling"
+                                        Repeater {
+                                            model: [["fill", "Fill"], ["fit", "Fit"], ["stretch", "Stretch"], ["default", "Original"]]
+                                            delegate: HeaderChip {
+                                                required property var modelData
+                                                chipLabel: modelData[1]
+                                                toggled: root.g("scaling") === modelData[0]
+                                                onClicked: root.setGlobal("scaling", modelData[0])
+                                            }
+                                        }
+                                    }
+                                    Repeater {
+                                        model: [["mouse", "Mouse interaction"], ["parallax", "Parallax effect"], ["particles", "Particle effects"]]
+                                        delegate: SettingsRow {
+                                            required property var modelData
+                                            rowText: modelData[1]
+                                            StyledSwitch {
+                                                checked: !!root.g(modelData[0])
+                                                onClicked: {
+                                                    root.setGlobal(modelData[0], checked);
+                                                    checked = Qt.binding(() => !!root.g(modelData[0]));
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                SettingsCard {
+                                    cardIcon: "volume_up"
+                                    cardTitle: "Audio"
+                                    cardSubtitle: "Volume and audio processing"
+                                    SettingsRow {
+                                        rowText: "Volume"
+                                        StyledSlider {
+                                            id: globalVol
+                                            implicitWidth: 180
+                                            from: 0
+                                            to: 100
+                                            stepSize: 5
+                                            value: Number(root.g("volume"))
+                                            usePercentTooltip: false
+                                            tooltipContent: `${Math.round(value)}%`
+                                            onMoved: root.setGlobal("volume", Math.round(value))
+                                        }
+                                        StyledText {
+                                            Layout.preferredWidth: 40
+                                            horizontalAlignment: Text.AlignRight
+                                            text: `${Math.round(globalVol.value)}%`
+                                            font.pixelSize: Appearance.font.pixelSize.small
+                                            color: Appearance.colors.colSubtext
+                                        }
+                                    }
+                                    SettingsRow {
+                                        rowText: "Mute all wallpapers"
+                                        StyledSwitch {
+                                            checked: root.g("mute")
+                                            onClicked: {
+                                                root.setGlobal("mute", checked);
+                                                checked = Qt.binding(() => root.g("mute"));
+                                            }
+                                        }
+                                    }
+                                    SettingsRow {
+                                        rowText: "Don't mute when other apps play audio"
+                                        StyledSwitch {
+                                            checked: root.g("noautomute")
+                                            onClicked: {
+                                                root.setGlobal("noautomute", checked);
+                                                checked = Qt.binding(() => root.g("noautomute"));
+                                            }
+                                        }
+                                    }
+                                    SettingsRow {
+                                        rowText: "Audio reactive effects"
+                                        StyledSwitch {
+                                            checked: root.g("audio")
+                                            onClicked: {
+                                                root.setGlobal("audio", checked);
+                                                checked = Qt.binding(() => root.g("audio"));
+                                            }
+                                        }
+                                    }
+                                }
+
+                                SettingsCard {
+                                    cardIcon: "storefront"
+                                    cardTitle: "Workshop"
+                                    cardSubtitle: "Steam connection"
+                                    SettingsRow {
+                                        rowText: root.wsStatus.length > 0 ? root.wsStatus : "Not checked yet"
+                                        rowHint: "Steam must be open. If Node.js is missing, run workshop-setup.sh once."
+                                        HeaderChip {
+                                            chipIcon: "refresh"
+                                            chipLabel: "Check"
+                                            onClicked: {
+                                                root.wsStatus = "Checking Steam...";
+                                                wsStatusProc.running = false;
+                                                wsStatusProc.running = true;
+                                            }
+                                        }
+                                    }
+                                    SettingsRow {
+                                        rowText: "Library"
+                                        rowHint: `${root.weItems.length} wallpapers installed`
+                                        HeaderChip {
+                                            chipIcon: "refresh"
+                                            chipLabel: "Rescan"
+                                            onClicked: root.weRefresh()
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
 
@@ -1119,6 +1687,645 @@ MouseArea {
                             onClicked: GlobalStates.wallpaperSelectorOpen = false;
                             StyledToolTip {
                                 text: Translation.tr("Cancel wallpaper selection")
+                            }
+                        }
+                    }
+                }
+            }
+
+            Rectangle { // details panel (Wallpaper Engine)
+                id: weDetails
+                visible: root.weMode && root.weTab !== "settings"
+                readonly property bool workshop: root.weTab === "workshop"
+                readonly property var item: workshop ? root.wsSel : root.weSel
+                Layout.fillHeight: true
+                Layout.margins: 4
+                Layout.preferredWidth: 340
+                color: Appearance.colors.colLayer1
+                radius: wallpaperGridBackground.radius - Layout.margins
+                clip: true
+
+                StyledText { // nothing selected
+                    anchors.centerIn: parent
+                    visible: !weDetails.item
+                    width: parent.width - 40
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.Wrap
+                    color: Appearance.colors.colSubtext
+                    text: root.weMessage.length > 0 ? root.weMessage : "Click a wallpaper to see its details and settings.\nDouble-click to apply it right away."
+                }
+
+                Flickable {
+                    id: weDetailsFlick
+                    visible: !!weDetails.item
+                    anchors.fill: parent
+                    contentHeight: weDetailsColumn.implicitHeight + 24
+                    clip: true
+                    boundsBehavior: Flickable.StopAtBounds
+                    ScrollBar.vertical: StyledScrollBar {}
+
+                    ColumnLayout {
+                        id: weDetailsColumn
+                        anchors {
+                            left: parent.left
+                            right: parent.right
+                            top: parent.top
+                            margins: 12
+                        }
+                        spacing: 10
+
+                        // preview
+                        Item {
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: width * 9 / 16
+                            Image {
+                                id: weDetailsPreview
+                                anchors.fill: parent
+                                source: !weDetails.item ? "" : weDetails.workshop ? weDetails.item.preview : (weDetails.item.preview.length > 0 ? `file://${weDetails.item.preview}` : "")
+                                sourceSize.width: 640
+                                fillMode: Image.PreserveAspectCrop
+                                asynchronous: true
+                                layer.enabled: true
+                                layer.effect: OpacityMask {
+                                    maskSource: Rectangle {
+                                        width: weDetailsPreview.width
+                                        height: weDetailsPreview.height
+                                        radius: Appearance.rounding.small
+                                    }
+                                }
+                            }
+                            RippleButton { // close
+                                anchors {
+                                    top: parent.top
+                                    right: parent.right
+                                    margins: 6
+                                }
+                                implicitWidth: 30
+                                implicitHeight: 30
+                                buttonRadius: 15
+                                colBackground: ColorUtils.transparentize("#000000", 0.4)
+                                onClicked: weDetails.workshop ? (root.wsSel = null) : root.weSelect(null)
+                                contentItem: MaterialSymbol {
+                                    horizontalAlignment: Text.AlignHCenter
+                                    verticalAlignment: Text.AlignVCenter
+                                    text: "close"
+                                    iconSize: 18
+                                    color: "#ffffff"
+                                }
+                            }
+                        }
+
+                        // title
+                        StyledText {
+                            Layout.fillWidth: true
+                            text: weDetails.item?.title ?? ""
+                            wrapMode: Text.Wrap
+                            maximumLineCount: 3
+                            elide: Text.ElideRight
+                            font.pixelSize: Appearance.font.pixelSize.large
+                            font.weight: Font.DemiBold
+                            color: Appearance.colors.colOnLayer1
+                        }
+                        StyledText {
+                            Layout.fillWidth: true
+                            visible: !weDetails.workshop && root.weShowingOn(weDetails.item?.id ?? "").length > 0
+                            text: `Playing on ${root.weShowingOn(weDetails.item?.id ?? "").join(" and ")}`
+                            font.pixelSize: Appearance.font.pixelSize.small
+                            color: Appearance.colors.colPrimary
+                        }
+
+                        // ===== Library: Apply (all / one display) + delete =====
+                        RowLayout {
+                            visible: !weDetails.workshop
+                            Layout.fillWidth: true
+                            spacing: 6
+                            RippleButton {
+                                Layout.fillWidth: true
+                                implicitHeight: 40
+                                buttonRadius: 12
+                                colBackground: Appearance.colors.colPrimary
+                                colBackgroundHover: Appearance.colors.colPrimaryHover
+                                onClicked: root.weApplyTo(weDetails.item?.dir, "")
+                                contentItem: RowLayout {
+                                    spacing: 6
+                                    Item { Layout.fillWidth: true }
+                                    MaterialSymbol {
+                                        text: "desktop_windows"
+                                        iconSize: 18
+                                        color: Appearance.colors.colOnPrimary
+                                    }
+                                    StyledText {
+                                        text: "Apply to all displays"
+                                        color: Appearance.colors.colOnPrimary
+                                    }
+                                    Item { Layout.fillWidth: true }
+                                }
+                            }
+                            RippleButton { // choose a display
+                                implicitWidth: 40
+                                implicitHeight: 40
+                                buttonRadius: 12
+                                toggled: root.weDisplayMenu
+                                colBackground: Appearance.colors.colPrimary
+                                colBackgroundHover: Appearance.colors.colPrimaryHover
+                                colBackgroundToggled: Appearance.colors.colPrimaryActive
+                                onClicked: root.weDisplayMenu = !root.weDisplayMenu
+                                contentItem: MaterialSymbol {
+                                    horizontalAlignment: Text.AlignHCenter
+                                    verticalAlignment: Text.AlignVCenter
+                                    text: root.weDisplayMenu ? "expand_less" : "expand_more"
+                                    iconSize: 20
+                                    color: Appearance.colors.colOnPrimary
+                                }
+                                StyledToolTip {
+                                    text: "Apply to one display"
+                                }
+                            }
+                            RippleButton { // delete (unsubscribe)
+                                implicitWidth: root.weDeleteArmed ? 120 : 40
+                                implicitHeight: 40
+                                buttonRadius: 12
+                                colBackground: root.weDeleteArmed ? "#b3261e" : Appearance.colors.colLayer2
+                                onClicked: root.weDelete(weDetails.item)
+                                contentItem: RowLayout {
+                                    spacing: 4
+                                    Item { Layout.fillWidth: true }
+                                    MaterialSymbol {
+                                        text: "delete"
+                                        iconSize: 18
+                                        color: root.weDeleteArmed ? "#ffffff" : Appearance.colors.colOnLayer2
+                                    }
+                                    StyledText {
+                                        visible: root.weDeleteArmed
+                                        text: "Sure?"
+                                        color: "#ffffff"
+                                    }
+                                    Item { Layout.fillWidth: true }
+                                }
+                                StyledToolTip {
+                                    text: "Unsubscribe and delete from your library"
+                                }
+                            }
+                        }
+                        ColumnLayout { // display list
+                            visible: !weDetails.workshop && root.weDisplayMenu
+                            Layout.fillWidth: true
+                            spacing: 4
+                            Repeater {
+                                model: Quickshell.screens
+                                delegate: RippleButton {
+                                    required property var modelData
+                                    Layout.fillWidth: true
+                                    implicitHeight: 38
+                                    buttonRadius: 10
+                                    colBackground: Appearance.colors.colLayer2
+                                    horizontalPadding: 12
+                                    onClicked: root.weApplyTo(weDetails.item?.dir, modelData.name)
+                                    contentItem: RowLayout {
+                                        spacing: 8
+                                        MaterialSymbol {
+                                            text: "monitor"
+                                            iconSize: 18
+                                            color: Appearance.colors.colOnLayer2
+                                        }
+                                        StyledText {
+                                            Layout.fillWidth: true
+                                            text: `Apply to ${modelData.name}`
+                                            color: Appearance.colors.colOnLayer2
+                                            elide: Text.ElideRight
+                                        }
+                                        StyledText {
+                                            text: modelData.model ?? ""
+                                            font.pixelSize: Appearance.font.pixelSize.smaller
+                                            color: Appearance.colors.colSubtext
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        StyledText {
+                            Layout.fillWidth: true
+                            visible: root.weMessage.length > 0
+                            text: root.weMessage
+                            wrapMode: Text.Wrap
+                            font.pixelSize: Appearance.font.pixelSize.small
+                            color: Appearance.colors.colSubtext
+                        }
+
+                        // ===== Workshop: Subscribe / Apply =====
+                        RippleButton {
+                            visible: weDetails.workshop
+                            Layout.fillWidth: true
+                            implicitHeight: 40
+                            buttonRadius: 12
+                            readonly property string folder: weDetails.workshop && weDetails.item ? root.wsFolder(weDetails.item) : ""
+                            readonly property var dl: weDetails.item ? root.wsDownloads[weDetails.item.id] : undefined
+                            colBackground: Appearance.colors.colPrimary
+                            colBackgroundHover: Appearance.colors.colPrimaryHover
+                            onClicked: root.wsActivate(weDetails.item)
+                            contentItem: RowLayout {
+                                spacing: 6
+                                Item { Layout.fillWidth: true }
+                                MaterialSymbol {
+                                    text: parent.parent.folder.length > 0 ? "play_arrow" : typeof parent.parent.dl === "number" ? "downloading" : "add"
+                                    iconSize: 18
+                                    color: Appearance.colors.colOnPrimary
+                                }
+                                StyledText {
+                                    text: parent.parent.folder.length > 0 ? "Apply to all displays" : typeof parent.parent.dl === "number" ? `Downloading ${Math.round(parent.parent.dl * 100)}%` : "Subscribe"
+                                    color: Appearance.colors.colOnPrimary
+                                }
+                                Item { Layout.fillWidth: true }
+                            }
+                        }
+
+                        // ===== info rows =====
+                        Rectangle {
+                            Layout.fillWidth: true
+                            implicitHeight: 1
+                            color: Appearance.colors.colOutlineVariant
+                        }
+                        Repeater {
+                            model: {
+                                const it = weDetails.item;
+                                if (!it) return [];
+                                const rows = [["category", "Type", root.typeNames[it.type] ?? it.type], ["shield", "Rating", it.rating || "Everyone"]];
+                                if (weDetails.workshop) {
+                                    rows.push(["thumb_up", "Likes", `${it.votes ?? 0}`]);
+                                } else {
+                                    if (root.weInfo.resolution) rows.push(["aspect_ratio", "Resolution", root.weInfo.resolution]);
+                                    if (root.weInfo.size) rows.push(["hard_drive", "Size", root.formatSize(root.weInfo.size)]);
+                                    rows.push(["tag", "Workshop ID", it.id]);
+                                }
+                                return rows;
+                            }
+                            delegate: RowLayout {
+                                required property var modelData
+                                Layout.fillWidth: true
+                                spacing: 8
+                                MaterialSymbol {
+                                    text: modelData[0]
+                                    iconSize: 18
+                                    color: Appearance.colors.colSubtext
+                                }
+                                StyledText {
+                                    Layout.fillWidth: true
+                                    text: modelData[1]
+                                    color: Appearance.colors.colSubtext
+                                }
+                                StyledText {
+                                    text: modelData[2]
+                                    color: Appearance.colors.colOnLayer1
+                                }
+                            }
+                        }
+
+                        // tags
+                        Flow {
+                            Layout.fillWidth: true
+                            visible: !weDetails.workshop && (weDetails.item?.tags ?? []).length > 0
+                            spacing: 6
+                            Repeater {
+                                model: weDetails.workshop ? [] : (weDetails.item?.tags ?? [])
+                                delegate: Rectangle {
+                                    required property string modelData
+                                    implicitWidth: tagText.implicitWidth + 16
+                                    implicitHeight: 24
+                                    radius: 12
+                                    color: Appearance.colors.colLayer2
+                                    StyledText {
+                                        id: tagText
+                                        anchors.centerIn: parent
+                                        text: parent.modelData
+                                        font.pixelSize: Appearance.font.pixelSize.smaller
+                                        color: Appearance.colors.colOnLayer2
+                                    }
+                                }
+                            }
+                        }
+
+                        // ===== settings for this wallpaper =====
+                        ColumnLayout {
+                            visible: !weDetails.workshop
+                            Layout.fillWidth: true
+                            spacing: 8
+                            readonly property string wid: weDetails.item?.id ?? ""
+
+                            Rectangle {
+                                Layout.fillWidth: true
+                                implicitHeight: 1
+                                color: Appearance.colors.colOutlineVariant
+                            }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                MaterialSymbol {
+                                    text: "tune"
+                                    iconSize: 18
+                                    color: Appearance.colors.colOnLayer1
+                                }
+                                StyledText {
+                                    Layout.fillWidth: true
+                                    text: "Settings for this wallpaper"
+                                    color: Appearance.colors.colOnLayer1
+                                    font.weight: Font.Medium
+                                }
+                                RippleButton {
+                                    implicitHeight: 28
+                                    implicitWidth: resetText.implicitWidth + 18
+                                    buttonRadius: 8
+                                    onClicked: root.weSetSetting(parent.parent.wid, null, null)
+                                    contentItem: StyledText {
+                                        id: resetText
+                                        horizontalAlignment: Text.AlignHCenter
+                                        verticalAlignment: Text.AlignVCenter
+                                        text: "Reset"
+                                        font.pixelSize: Appearance.font.pixelSize.small
+                                        color: Appearance.colors.colPrimary
+                                    }
+                                }
+                            }
+
+                            // scaling (per display)
+                            StyledText {
+                                text: "Scaling"
+                                color: Appearance.colors.colSubtext
+                                font.pixelSize: Appearance.font.pixelSize.small
+                            }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 4
+                                Repeater {
+                                    model: [["fill", "Fill"], ["fit", "Fit"], ["stretch", "Stretch"], ["default", "Original"]]
+                                    delegate: HeaderChip {
+                                        required property var modelData
+                                        Layout.fillWidth: true
+                                        chipLabel: modelData[1]
+                                        toggled: root.weSetting(weDetails.item?.id ?? "", "scaling") === modelData[0]
+                                        onClicked: root.weSetSetting(weDetails.item?.id ?? "", "scaling", modelData[0])
+                                    }
+                                }
+                            }
+
+                            // volume
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
+                                MaterialSymbol {
+                                    text: volSlider.value <= 0 ? "volume_off" : "volume_up"
+                                    iconSize: 18
+                                    color: Appearance.colors.colOnLayer1
+                                }
+                                StyledText {
+                                    text: "Volume"
+                                    color: Appearance.colors.colOnLayer1
+                                }
+                                StyledSlider {
+                                    id: volSlider
+                                    Layout.fillWidth: true
+                                    from: 0
+                                    to: 100
+                                    stepSize: 5
+                                    value: Number(root.weSetting(weDetails.item?.id ?? "", "volume"))
+                                    usePercentTooltip: false
+                                    tooltipContent: `${Math.round(value)}%`
+                                    onMoved: root.weSetSetting(weDetails.item?.id ?? "", "volume", Math.round(value))
+                                }
+                                StyledText {
+                                    Layout.preferredWidth: 40
+                                    horizontalAlignment: Text.AlignRight
+                                    text: volSlider.value <= 0 ? "Muted" : `${Math.round(volSlider.value)}%`
+                                    font.pixelSize: Appearance.font.pixelSize.small
+                                    color: Appearance.colors.colSubtext
+                                }
+                            }
+
+                            // switches
+                            Repeater {
+                                model: [["audio", "graphic_eq", "Audio reactive effects"], ["mouse", "mouse", "Mouse interaction"], ["parallax", "3d_rotation", "Parallax effect"], ["particles", "grain", "Particles"]]
+                                delegate: RowLayout {
+                                    required property var modelData
+                                    Layout.fillWidth: true
+                                    spacing: 8
+                                    MaterialSymbol {
+                                        text: modelData[1]
+                                        iconSize: 18
+                                        color: Appearance.colors.colOnLayer1
+                                    }
+                                    StyledText {
+                                        Layout.fillWidth: true
+                                        text: modelData[2]
+                                        color: Appearance.colors.colOnLayer1
+                                    }
+                                    StyledSwitch {
+                                        checked: !!root.weSetting(weDetails.item?.id ?? "", modelData[0])
+                                        onClicked: {
+                                            root.weSetSetting(weDetails.item?.id ?? "", modelData[0], checked);
+                                            checked = Qt.binding(() => !!root.weSetting(weDetails.item?.id ?? "", modelData[0]));
+                                        }
+                                    }
+                                }
+                            }
+                            StyledText {
+                                Layout.fillWidth: true
+                                wrapMode: Text.Wrap
+                                font.pixelSize: Appearance.font.pixelSize.smaller
+                                color: Appearance.colors.colSubtext
+                                text: "Changes apply right away if it is playing. Scaling is per display. With two different wallpapers showing, volume uses the louder one, and mouse, parallax, particles and audio effects turn off only if both have them off."
+                            }
+                            StyledText {
+                                Layout.fillWidth: true
+                                visible: root.g("mute")
+                                wrapMode: Text.Wrap
+                                font.pixelSize: Appearance.font.pixelSize.smaller
+                                color: Appearance.colors.colPrimary
+                                text: "All wallpapers are muted in Settings, turn that off to hear this one."
+                            }
+
+                            // ===== the wallpaper's own options =====
+                            Rectangle {
+                                visible: root.weProps.length > 0
+                                Layout.fillWidth: true
+                                Layout.topMargin: 4
+                                implicitHeight: 1
+                                color: Appearance.colors.colOutlineVariant
+                            }
+                            RowLayout {
+                                visible: root.weProps.length > 0
+                                Layout.fillWidth: true
+                                MaterialSymbol {
+                                    text: "palette"
+                                    iconSize: 18
+                                    color: Appearance.colors.colOnLayer1
+                                }
+                                StyledText {
+                                    Layout.fillWidth: true
+                                    text: "Wallpaper options"
+                                    color: Appearance.colors.colOnLayer1
+                                    font.weight: Font.Medium
+                                }
+                            }
+                            Repeater {
+                                model: root.weProps
+                                delegate: ColumnLayout {
+                                    id: propRow
+                                    required property var modelData
+                                    readonly property string wid: weDetails.item?.id ?? ""
+                                    readonly property var current: root.weProp(wid, modelData)
+                                    Layout.fillWidth: true
+                                    spacing: 4
+
+                                    // text label only
+                                    StyledText {
+                                        visible: propRow.modelData.type === "text"
+                                        Layout.fillWidth: true
+                                        wrapMode: Text.Wrap
+                                        text: propRow.modelData.label
+                                        font.pixelSize: Appearance.font.pixelSize.small
+                                        color: Appearance.colors.colSubtext
+                                    }
+
+                                    // on / off
+                                    RowLayout {
+                                        visible: propRow.modelData.type === "bool"
+                                        Layout.fillWidth: true
+                                        StyledText {
+                                            Layout.fillWidth: true
+                                            wrapMode: Text.Wrap
+                                            text: propRow.modelData.label
+                                            color: Appearance.colors.colOnLayer1
+                                        }
+                                        StyledSwitch {
+                                            checked: !!propRow.current
+                                            onClicked: {
+                                                root.weSetProp(propRow.wid, propRow.modelData.name, checked);
+                                                checked = Qt.binding(() => !!propRow.current);
+                                            }
+                                        }
+                                    }
+
+                                    // slider
+                                    StyledText {
+                                        visible: propRow.modelData.type === "slider"
+                                        Layout.fillWidth: true
+                                        wrapMode: Text.Wrap
+                                        text: `${propRow.modelData.label}: ${Number(propRow.current).toFixed(propRow.modelData.step > 0 && propRow.modelData.step < 1 ? 2 : 0)}`
+                                        color: Appearance.colors.colOnLayer1
+                                    }
+                                    StyledSlider {
+                                        visible: propRow.modelData.type === "slider"
+                                        Layout.fillWidth: true
+                                        from: propRow.modelData.min ?? 0
+                                        to: propRow.modelData.max ?? 100
+                                        stepSize: propRow.modelData.step ?? 0
+                                        value: Number(propRow.current ?? 0)
+                                        usePercentTooltip: false
+                                        tooltipContent: `${Number(value).toFixed(2)}`
+                                        onMoved: root.weSetProp(propRow.wid, propRow.modelData.name, Math.round(value * 1000) / 1000)
+                                    }
+
+                                    // dropdown
+                                    StyledText {
+                                        visible: propRow.modelData.type === "combo"
+                                        Layout.fillWidth: true
+                                        wrapMode: Text.Wrap
+                                        text: propRow.modelData.label
+                                        color: Appearance.colors.colOnLayer1
+                                    }
+                                    StyledComboBox {
+                                        visible: propRow.modelData.type === "combo"
+                                        Layout.fillWidth: true
+                                        model: propRow.modelData.options ?? []
+                                        textRole: "label"
+                                        currentIndex: Math.max(0, (propRow.modelData.options ?? []).findIndex(o => o.value === String(propRow.current)))
+                                        onActivated: index => root.weSetProp(propRow.wid, propRow.modelData.name, propRow.modelData.options[index].value)
+                                    }
+
+                                    // color
+                                    RowLayout {
+                                        visible: propRow.modelData.type === "color"
+                                        Layout.fillWidth: true
+                                        spacing: 6
+                                        StyledText {
+                                            Layout.fillWidth: true
+                                            wrapMode: Text.Wrap
+                                            text: propRow.modelData.label
+                                            color: Appearance.colors.colOnLayer1
+                                        }
+                                        Rectangle {
+                                            implicitWidth: 28
+                                            implicitHeight: 28
+                                            radius: 8
+                                            color: /^#[0-9a-fA-F]{6}$/.test(String(propRow.current)) ? propRow.current : "transparent"
+                                            border.width: 1
+                                            border.color: Appearance.colors.colOutlineVariant
+                                        }
+                                        MaterialTextField {
+                                            implicitWidth: 96
+                                            text: String(propRow.current)
+                                            onEditingFinished: {
+                                                let t = text.trim();
+                                                if (!t.startsWith("#")) t = "#" + t;
+                                                if (/^#[0-9a-fA-F]{6}$/.test(t)) root.weSetProp(propRow.wid, propRow.modelData.name, t.toUpperCase());
+                                            }
+                                        }
+                                        RippleButton { // pick a color from the screen
+                                            implicitWidth: 32
+                                            implicitHeight: 32
+                                            buttonRadius: 16
+                                            onClicked: {
+                                                pickColorProc.target = propRow.modelData.name;
+                                                pickColorProc.wid = propRow.wid;
+                                                pickColorProc.running = true;
+                                            }
+                                            contentItem: MaterialSymbol {
+                                                horizontalAlignment: Text.AlignHCenter
+                                                verticalAlignment: Text.AlignVCenter
+                                                text: "colorize"
+                                                iconSize: 18
+                                                color: Appearance.colors.colOnLayer1
+                                            }
+                                            StyledToolTip {
+                                                text: "Pick a color from the screen"
+                                            }
+                                        }
+                                    }
+
+                                    // text input
+                                    StyledText {
+                                        visible: propRow.modelData.type === "textinput"
+                                        Layout.fillWidth: true
+                                        wrapMode: Text.Wrap
+                                        text: propRow.modelData.label
+                                        color: Appearance.colors.colOnLayer1
+                                    }
+                                    MaterialTextField {
+                                        visible: propRow.modelData.type === "textinput"
+                                        Layout.fillWidth: true
+                                        text: String(propRow.current ?? "")
+                                        onEditingFinished: root.weSetProp(propRow.wid, propRow.modelData.name, text)
+                                    }
+                                }
+                            }
+                            StyledText {
+                                Layout.fillWidth: true
+                                visible: root.weProps.length > 0
+                                wrapMode: Text.Wrap
+                                font.pixelSize: Appearance.font.pixelSize.smaller
+                                color: Appearance.colors.colSubtext
+                                text: "Options with the same name are shared if two different wallpapers show at once."
+                            }
+                            Process {
+                                id: pickColorProc
+                                property string target
+                                property string wid
+                                command: ["hyprpicker", "--no-fancy", "--format=hex"]
+                                stdout: StdioCollector {
+                                    id: pickColorCollector
+                                    onStreamFinished: {
+                                        const t = pickColorCollector.text.trim().toUpperCase();
+                                        if (/^#[0-9A-F]{6}$/.test(t)) root.weSetProp(pickColorProc.wid, pickColorProc.target, t);
+                                    }
+                                }
                             }
                         }
                     }

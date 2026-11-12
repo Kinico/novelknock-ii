@@ -48,7 +48,7 @@ PYEOF
 }
 
 current_key() {
-    awk 'p=="--bg"{sub(/\/+$/,""); n=split($0,a,"/"); printf "%s%s", (k?"+":""), a[n]; k=1} {p=$0}' "$ARGS" 2>/dev/null
+    awk 'p=="--bg"{sub(/\/+$/,""); n=split($0,a,"/"); if(!seen[a[n]]++) printf "%s%s", (k?"+":""), a[n]; k=1} {p=$0}' "$ARGS" 2>/dev/null
 }
 first_bg() {
     awk 'p=="--bg"{print; exit} {p=$0}' "$ARGS" 2>/dev/null

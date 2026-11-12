@@ -38,11 +38,11 @@ VIEW="$VIEWDIR/view.json"
 view_mtime=""
 
 wallpaper_key() {   # workshop id(s) of the wallpaper(s) in the saved command
-    awk 'p=="--bg"{sub(/\/+$/,""); n=split($0,a,"/"); printf "%s%s", (k?"+":""), a[n]; k=1} {p=$0}' "$ARGS"
+    awk 'p=="--bg"{sub(/\/+$/,""); n=split($0,a,"/"); if(!seen[a[n]]++) printf "%s%s", (k?"+":""), a[n]; k=1} {p=$0}' "$ARGS"
 }
 
 presets() {   # presets <sync|store> <key> <bg paths...>
-    python3 - "$VIEWDIR" "$@" <<'PYEOF'
+    NK_ARGS="$ARGS" python3 - "$VIEWDIR" "$@" <<'PYEOF'
 import json, os, sys
 d, action, key, bgs = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4:]
 os.makedirs(d, exist_ok=True)
@@ -55,20 +55,50 @@ def save(p, data):
     tmp = p + ".tmp"
     with open(tmp, "w") as f: json.dump(data, f, indent=2)
     os.replace(tmp, p)
+screens, cur, default_bg = {}, None, ""
+try:
+    lines = [l.rstrip("\n") for l in open(os.environ.get("NK_ARGS", ""))]
+except Exception:
+    lines = []
+for i, a in enumerate(lines):
+    nxt = lines[i + 1] if i + 1 < len(lines) else ""
+    if a in ("--screen-root", "-r"):
+        cur = nxt
+        screens[cur] = ""
+    elif a in ("--bg", "-b"):
+        if cur:
+            screens[cur] = os.path.basename(nxt.rstrip("/"))
+        default_bg = os.path.basename(nxt.rstrip("/"))
+screens = {s: (v or default_bg) for s, v in screens.items()}
 pre = load(pre_p, {})
 view = load(view_p, {})
-old = load(cur_p, {}).get("key", "")
+cur_info = load(cur_p, {})
+old = cur_info.get("key", "")
+old_screens = cur_info.get("screens") or {s: old for s in view}
+if not screens:
+    screens = {s: key for s in view}
+
+def store(mapping):   # zoom / X / Y are kept per wallpaper and per display
+    for scr, wid in mapping.items():
+        if not wid:
+            continue
+        slot = pre.setdefault(wid, {})
+        if scr in view:
+            slot[scr] = view[scr]
+        else:
+            slot.pop(scr, None)
+
 if action == "sync" and old and old != key:
-    pre[old] = view                    # remember the old wallpaper's values
-    view = pre.get(key, {})            # new wallpaper: its own values, or default
-    save(view_p, view)
-pre[key] = view
+    store(old_screens)                 # remember the old wallpapers' values
+    view = {scr: pre[wid][scr] for scr, wid in screens.items() if scr in pre.get(wid, {})}
+    save(view_p, view)                 # each display gets its wallpaper's values, or default
+store(screens)
 save(pre_p, pre)
 titles = []
 for bg in bgs:
     t = load(os.path.join(bg, "project.json"), {}).get("title") or os.path.basename(bg.rstrip("/"))
     titles.append(t)
-save(cur_p, {"key": key, "title": " + ".join(titles)})
+save(cur_p, {"key": key, "title": " + ".join(titles), "screens": screens})
 PYEOF
 }
 
@@ -91,7 +121,7 @@ sync_presets() {
             # changed in the app: let the app's choice win from now on
             rm -f "$STATE/picked-key" "$STATE/picked-args"
         fi
-        mapfile -t bgs < <(awk 'p=="--bg"{print} {p=$0}' "$ARGS")
+        mapfile -t bgs < <(awk 'p=="--bg"{if(!seen[$0]++) print} {p=$0}' "$ARGS")
         presets sync "$key" "${bgs[@]}"
         [ -n "$last_key" ] && log "wallpaper changed to $key, loaded its zoom / X / Y"
         last_key=$key

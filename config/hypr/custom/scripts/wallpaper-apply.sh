@@ -1,20 +1,33 @@
 #!/usr/bin/env bash
 # Wallpaper Engine wallpapers for the Super+Z picker.
-#   wallpaper-apply.sh list          JSON list of installed Workshop wallpapers (for the picker)
-#   wallpaper-apply.sh apply <dir>   play that wallpaper on all monitors with your usual settings
-#   wallpaper-apply.sh restore       start the last picked wallpaper again (used by the watchdog at login)
+#   wallpaper-apply.sh list                   JSON list of installed Workshop wallpapers
+#   wallpaper-apply.sh info <dir>             size, tags and resolution of one wallpaper (JSON)
+#   wallpaper-apply.sh apply <dir> [screen]   play it on one display (or all displays when no screen)
+#   wallpaper-apply.sh reapply                restart with the same wallpapers (after changing settings)
+#   wallpaper-apply.sh restore                start the last picked layout again (used by the watchdog at login)
+#   wallpaper-apply.sh props <dir>            the wallpaper's own options (colors, switches, sliders...) as JSON
+#   wallpaper-apply.sh autorestart on|off     turn the watchdog's auto-restart on or off
+# Global settings (the Settings page): ~/.config/linux-wallpaperengine/global-settings.json
+#   { "fps": 30, "pauseFullscreen": false, "scaling": "fill", "volume": 100, "mute": true, "noautomute": false,
+#     "audio": true, "mouse": true, "parallax": true, "particles": true, "autoRestart": true }
+# Per-wallpaper settings override them: ~/.config/linux-wallpaperengine/wallpaper-settings.json
+#   { "<id>": { "scaling": "fit", "volume": 60, ..., "props": { "<option name>": <value> } } }
+# Wallpaper and scaling are per display. Volume, audio, mouse, parallax and particles are shared by the
+# engine: volume is the loudest of the wallpapers showing, the others turn off only if every
+# wallpaper showing has them off.
 STATE="${XDG_STATE_HOME:-$HOME/.local/state}/wallpaper-watchdog"
 ARGS="$STATE/last-args"
 CWD="$STATE/last-cwd"
-PICKED="$STATE/picked-args"     # args of a wallpaper chosen in the picker (kept across logins)
+PICKED="$STATE/picked-args"
 ENGINE_DIR="/opt/linux-wallpaperengine"
 STEAM="$HOME/.local/share/Steam"
-mkdir -p "$STATE"
+SETTINGS="$HOME/.config/linux-wallpaperengine/wallpaper-settings.json"
+GLOBAL="$HOME/.config/linux-wallpaperengine/global-settings.json"
+mkdir -p "$STATE" "$(dirname "$SETTINGS")"
 
 workshop_dirs() {
     {
         echo "$STEAM/steamapps"
-        # extra Steam library folders
         grep -o '"path"[[:space:]]*"[^"]*"' "$STEAM/steamapps/libraryfolders.vdf" 2>/dev/null \
             | sed 's/.*"path"[[:space:]]*"\(.*\)"/\1\/steamapps/'
     } | awk '!seen[$0]++' | while read -r lib; do
@@ -35,6 +48,117 @@ start_engine() {   # start_engine <args file>
         export LD_LIBRARY_PATH="$ENGINE_DIR/lib:$LD_LIBRARY_PATH"
         setsid "${cmd[@]}" >/dev/null 2>&1 < /dev/null &
     )
+}
+
+# build the engine command: build_args <dir|-> <screen|all>   ("-" keeps the current wallpapers)
+build_args() {
+    local monitors
+    monitors=$(hyprctl monitors 2>/dev/null | awk '/^Monitor /{print $2}' | paste -sd, -)
+    python3 - "$ARGS" "$SETTINGS" "$1" "$2" "$monitors" "$STEAM" "$GLOBAL" <<'PYEOF'
+import json, os, sys
+args_p, settings_p, new_dir, target, monitors, steam, global_p = sys.argv[1:8]
+monitors = [m for m in monitors.split(",") if m]
+try:
+    old = [l.rstrip("\n") for l in open(args_p)]
+except Exception:
+    old = []
+try:
+    settings = json.load(open(settings_p))
+except Exception:
+    settings = {}
+glob = {"fps": None, "pauseFullscreen": None, "scaling": "fill", "volume": 100, "mute": True, "noautomute": False,
+        "audio": True, "mouse": True, "parallax": True, "particles": True}
+try:
+    glob.update(json.load(open(global_p)))
+except Exception:
+    pass
+
+# current layout from the running command
+screens, mapping, default_bg, cur = [], {}, "", None
+keep = {"fps": "30", "assets": os.path.join(steam, "steamapps/common/wallpaper_engine/assets"),
+        "nofspause": True, "layer": None, "exe": "./linux-wallpaperengine"}
+i = 0
+if old:
+    # everything up to the engine itself (normally just ./linux-wallpaperengine)
+    for j, part in enumerate(old):
+        if os.path.basename(part) == "linux-wallpaperengine":
+            keep["exe"] = old[:j + 1]
+            i = j + 1
+            break
+    keep["nofspause"] = "--no-fullscreen-pause" in old
+while i < len(old):
+    a = old[i]
+    nxt = old[i + 1] if i + 1 < len(old) else ""
+    if a in ("--screen-root", "-r"):
+        cur = nxt; screens.append(nxt); i += 2; continue
+    if a in ("--bg", "-b"):
+        if cur: mapping[cur] = nxt
+        default_bg = nxt; i += 2; continue
+    if a in ("--fps", "-f"): keep["fps"] = nxt; i += 2; continue
+    if a == "--assets-dir": keep["assets"] = nxt; i += 2; continue
+    if a == "--layer": keep["layer"] = nxt; i += 2; continue
+    i += 1
+for s in screens:
+    mapping.setdefault(s, default_bg)
+
+order = monitors or screens
+if new_dir != "-":
+    for s in order:
+        if target in ("all", "") or s == target:
+            mapping[s] = new_dir
+fallback = new_dir if new_dir != "-" else default_bg
+for s in order:
+    if not mapping.get(s):
+        mapping[s] = fallback
+mapping = {s: mapping[s] for s in order if mapping.get(s)}
+if not mapping:
+    sys.exit(1)
+
+def st(d):
+    v = settings.get(os.path.basename(d.rstrip("/")), {})
+    out = {k: v.get(k, glob[k]) for k in ("scaling", "volume", "audio", "mouse", "parallax", "particles")}
+    out["props"] = v.get("props", {})
+    return out
+
+def prop_value(val):
+    if isinstance(val, bool):
+        return "1" if val else "0"
+    if isinstance(val, str) and val.startswith("#") and len(val) == 7:
+        r, g, b = (int(val[i:i + 2], 16) / 255 for i in (1, 3, 5))
+        return f"{r:.3f} {g:.3f} {b:.3f}"
+    return str(val)
+
+cmd = list(keep["exe"]) if isinstance(keep["exe"], list) else [keep["exe"]]
+for s, d in mapping.items():
+    cmd += ["--screen-root", s, "--bg", d, "--scaling", st(d)["scaling"]]
+shown = [st(d) for d in dict.fromkeys(mapping.values())]
+vol = max(x["volume"] for x in shown)
+if glob["mute"] or vol <= 0:          # "Mute all wallpapers" in Settings wins
+    cmd.append("--silent")
+else:
+    cmd += ["--volume", str(round(min(100, vol) * 128 / 100))]
+if glob["noautomute"]: cmd.append("--noautomute")
+if all(not x["audio"] for x in shown): cmd.append("--no-audio-processing")
+if all(not x["mouse"] for x in shown): cmd.append("--disable-mouse")
+if all(not x["parallax"] for x in shown): cmd.append("--disable-parallax")
+if all(not x["particles"] for x in shown): cmd.append("--disable-particles")
+props = {}
+for x in shown:
+    props.update(x["props"])
+for name, val in props.items():
+    cmd += ["--set-property", f"{name}={prop_value(val)}"]
+cmd += ["--fps", str(glob["fps"] or keep["fps"])]
+nofspause = (not glob["pauseFullscreen"]) if glob["pauseFullscreen"] is not None else keep["nofspause"]
+if nofspause: cmd.append("--no-fullscreen-pause")
+if keep["layer"]: cmd += ["--layer", keep["layer"]]
+cmd += ["--assets-dir", keep["assets"]]
+print("\n".join(cmd))
+PYEOF
+}
+
+# key the watchdog uses: the wallpaper ids in the command, each once, joined with "+"
+args_key() {
+    awk 'p=="--bg"{sub(/\/+$/,""); n=split($0,a,"/"); if(!seen[a[n]]++) printf "%s%s", (k?"+":""), a[n]; k=1} {p=$0}' "$1"
 }
 
 case "$1" in
@@ -67,6 +191,7 @@ for root in sys.stdin.read().split():
             "title": pj.get("title") or name,
             "type": kind,
             "rating": str(pj.get("contentrating") or "Everyone"),
+            "tags": [str(t) for t in (pj.get("tags") or [])][:12],
             "preview": prev_path,
             "added": os.path.getmtime(d),
         })
@@ -74,28 +199,95 @@ items.sort(key=lambda i: i["added"], reverse=True)   # newest subscriptions firs
 print(json.dumps(items))
 '
         ;;
+    info)
+        dir="${2%/}"
+        size=$(du -sb "$dir" 2>/dev/null | cut -f1)
+        res=""
+        file=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("file",""))' "$dir/project.json" 2>/dev/null)
+        if [ -n "$file" ] && [ -f "$dir/$file" ] && command -v ffprobe >/dev/null; then
+            case "$file" in *.mp4|*.webm|*.mkv|*.avi|*.mov)
+                res=$(ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=s=x:p=0 "$dir/$file" 2>/dev/null | head -1) ;;
+            esac
+        fi
+        printf '{"size": %s, "resolution": "%s"}\n' "${size:-0}" "$res"
+        ;;
     apply)
         dir="${2%/}"
         [ -f "$dir/project.json" ] || { echo "not a wallpaper folder: $dir" >&2; exit 1; }
-        if [ -s "$ARGS" ]; then
-            # same settings as now (screens, fps, scaling, assets), only the wallpaper changes
-            awk -v bg="$dir" 'prev=="--bg"{print bg; prev=""; next} {print; prev=$0}' "$ARGS" > "$PICKED.tmp"
-        else
-            {
-                echo "./linux-wallpaperengine"
-                hyprctl monitors 2>/dev/null | awk '/^Monitor /{print "--screen-root"; print $2}'
-                printf '%s\n' --bg "$dir" --silent --fps 30 --no-fullscreen-pause --scaling fill \
-                    --assets-dir "$STEAM/steamapps/common/wallpaper_engine/assets"
-            } > "$PICKED.tmp"
-        fi
+        build_args "$dir" "${3:-all}" > "$PICKED.tmp" || exit 1
         mv "$PICKED.tmp" "$PICKED"
-        basename "$dir" > "$STATE/picked-key"
+        args_key "$PICKED" > "$STATE/picked-key"
+        start_engine "$PICKED"
+        ;;
+    reapply)
+        [ -s "$ARGS" ] || exit 0
+        build_args - all > "$PICKED.tmp" || exit 1
+        mv "$PICKED.tmp" "$PICKED"
+        args_key "$PICKED" > "$STATE/picked-key"
         start_engine "$PICKED"
         ;;
     restore)
         [ -s "$PICKED" ] && start_engine "$PICKED"
         ;;
+    props)
+        python3 - "${2%/}/project.json" <<'PYEOF'
+import html, json, re, sys
+try:
+    pj = json.load(open(sys.argv[1], encoding="utf-8", errors="replace"))
+except Exception:
+    print("[]"); sys.exit(0)
+props = (pj.get("general") or {}).get("properties") or {}
+
+def label(text, name):
+    t = re.sub(r"<[^>]*>", " ", str(text or ""))
+    t = re.sub(r"\s+", " ", html.unescape(t)).strip()
+    if t.lower().startswith("ui_"):
+        t = re.sub(r"^ui_(browse_properties_)?", "", t, flags=re.I).replace("_", " ").strip().capitalize()
+    return t or name
+
+def to_hex(v):
+    try:
+        parts = [float(x) for x in str(v).replace(",", " ").split()[:3]]
+        if max(parts) > 1.0:
+            parts = [x / 255 for x in parts]
+        return "#" + "".join(f"{round(max(0, min(1, x)) * 255):02X}" for x in parts)
+    except Exception:
+        return "#FFFFFF"
+
+out = []
+for name, p in sorted(props.items(), key=lambda kv: (kv[1] or {}).get("order", 0) if isinstance(kv[1], dict) else 0):
+    if not isinstance(p, dict) or name == "schemecolor":   # schemecolor only colors the Windows taskbar
+        continue
+    kind = str(p.get("type", "")).lower()
+    item = {"name": name, "type": kind, "label": label(p.get("text"), name)}
+    if kind == "bool":
+        item["value"] = bool(p.get("value")) and str(p.get("value")).lower() not in ("0", "false")
+    elif kind == "slider":
+        item.update(value=float(p.get("value", 0) or 0), min=float(p.get("min", 0) or 0),
+                    max=float(p.get("max", 100) or 100), step=float(p.get("step", 0) or 0))
+    elif kind == "combo":
+        opts = [{"label": label(o.get("label"), str(o.get("value"))), "value": str(o.get("value"))}
+                for o in (p.get("options") or []) if isinstance(o, dict)]
+        if not opts:
+            continue
+        item.update(value=str(p.get("value", opts[0]["value"])), options=opts)
+    elif kind == "color":
+        item["value"] = to_hex(p.get("value", "1 1 1"))
+    elif kind == "textinput":
+        item["value"] = str(p.get("value", ""))
+    elif kind == "text":
+        if item["label"] == name:      # pure image or empty text, nothing to show
+            continue
+    else:
+        continue                       # files, folders and groups are not supported here
+    out.append(item)
+print(json.dumps(out))
+PYEOF
+        ;;
+    autorestart)
+        if [ "$2" = "off" ]; then touch "$STATE/paused"; else rm -f "$STATE/paused"; fi
+        ;;
     *)
-        echo "usage: $0 list | apply <wallpaper folder> | restore" >&2
+        echo "usage: $0 list | info <dir> | props <dir> | apply <dir> [screen] | reapply | restore | autorestart on|off" >&2
         exit 1 ;;
 esac
