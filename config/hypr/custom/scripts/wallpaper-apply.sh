@@ -20,11 +20,11 @@ STATE="${XDG_STATE_HOME:-$HOME/.local/state}/wallpaper-watchdog"
 ARGS="$STATE/last-args"
 CWD="$STATE/last-cwd"
 PICKED="$STATE/picked-args"
-ENGINE_DIR="/opt/linux-wallpaperengine"
+ENGINE_DIR="${NK_ENGINE_DIR:-/opt/linux-wallpaperengine}"
 STEAM="$HOME/.local/share/Steam"
 SETTINGS="$HOME/.config/linux-wallpaperengine/wallpaper-settings.json"
 GLOBAL="$HOME/.config/linux-wallpaperengine/global-settings.json"
-PATTERN='(^|/)linux-wallpaperengine( |$)'
+PATTERN='^([^ ]*/)?linux-wallpaperengine( |$)'   # only the engine itself: its command line starts with the program
 SELF="$(readlink -f "$0")"
 mkdir -p "$STATE" "$(dirname "$SETTINGS")"
 log() { echo "$(date '+%F %T') $*" >> "$STATE/log"; }
@@ -41,14 +41,25 @@ workshop_dirs() {
 
 start_engine() {   # start_engine <args file>
     mapfile -t cmd < "$1"
-    [ "${#cmd[@]}" -gt 0 ] || return 1
+    # keep only the options: the program is always ./linux-wallpaperengine in the engine folder
+    local first=-1 n
+    for n in "${!cmd[@]}"; do
+        case "${cmd[$n]}" in --*) first=$n; break ;; esac
+    done
+    [ "$first" -ge 0 ] || return 1
+    cmd=(./linux-wallpaperengine "${cmd[@]:$first}")
     pkill -f "$PATTERN"
     sleep 0.5
     pgrep -f "$PATTERN" >/dev/null && pkill -9 -f "$PATTERN"
     local dir
     dir=$(cat "$CWD" 2>/dev/null)
-    # runs the engine through "__run" below, which keeps the start of its output in engine.log
-    setsid bash "$SELF" __run "$1" "${dir:-$ENGINE_DIR}" >/dev/null 2>&1 < /dev/null 7>&- &
+    [ -x "$dir/linux-wallpaperengine" ] || dir=$ENGINE_DIR
+    (
+        cd "$dir" || exit
+        export LD_LIBRARY_PATH="$ENGINE_DIR/lib:$LD_LIBRARY_PATH"
+        unset MANGOHUD                 # the game overlay must not load into the wallpaper
+        setsid "${cmd[@]}" >/dev/null 2>&1 < /dev/null 7>&- &
+    )
 }
 
 # build the engine command: build_args <dir|-> <screen|all>   ("-" keeps the current wallpapers)
@@ -58,11 +69,17 @@ build_args() {
     python3 - "$ARGS" "$SETTINGS" "$1" "$2" "$monitors" "$STEAM" "$GLOBAL" <<'PYEOF'
 import json, os, sys
 args_p, settings_p, new_dir, target, monitors, steam, global_p = sys.argv[1:8]
+picked_p = os.path.join(os.path.dirname(args_p), "picked-args")
 monitors = [m for m in monitors.split(",") if m]
 try:
     old = [l.rstrip("\n") for l in open(args_p)]
 except Exception:
     old = []
+if "--bg" not in old:                      # damaged or empty: use the last picked command
+    try:
+        old = [l.rstrip("\n") for l in open(picked_p)]
+    except Exception:
+        pass
 try:
     settings = json.load(open(settings_p))
 except Exception:
@@ -80,12 +97,8 @@ keep = {"fps": "30", "assets": os.path.join(steam, "steamapps/common/wallpaper_e
         "nofspause": True, "layer": None, "exe": "./linux-wallpaperengine"}
 i = 0
 if old:
-    # everything up to the engine itself (normally just ./linux-wallpaperengine)
-    for j, part in enumerate(old):
-        if os.path.basename(part) == "linux-wallpaperengine":
-            keep["exe"] = old[:j + 1]
-            i = j + 1
-            break
+    # skip whatever is in front of the options; the program is always ./linux-wallpaperengine
+    i = next((j for j, part in enumerate(old) if part.startswith("--")), len(old))
     keep["nofspause"] = "--no-fullscreen-pause" in old
 while i < len(old):
     a = old[i]
@@ -129,7 +142,7 @@ def prop_value(val):
         return f"{r:.3f} {g:.3f} {b:.3f}"
     return str(val)
 
-cmd = list(keep["exe"]) if isinstance(keep["exe"], list) else [keep["exe"]]
+cmd = ["./linux-wallpaperengine"]
 for s, d in mapping.items():
     cmd += ["--screen-root", s, "--bg", d, "--scaling", st(d)["scaling"]]
 shown = [st(d) for d in dict.fromkeys(mapping.values())]
@@ -230,11 +243,8 @@ print(json.dumps(items))
     restore)
         [ -s "$PICKED" ] && start_engine "$PICKED"
         ;;
-    __run)   # internal: run the engine, keep the first 256 KB of what it prints for troubleshooting
-        mapfile -t cmd < "$2"
-        cd "$3" 2>/dev/null || cd "$ENGINE_DIR" || exit 1
-        export LD_LIBRARY_PATH="$ENGINE_DIR/lib:$LD_LIBRARY_PATH"
-        "${cmd[@]}" 2>&1 | { head -c 262144 > "$STATE/engine.log"; cat > /dev/null; }
+    __run)   # removed (it could start itself over and over); kept so an old saved command just stops
+        exit 0
         ;;
     boot)
         exec 7>"$STATE/boot.lock"
@@ -262,8 +272,7 @@ print(json.dumps(items))
                 start_engine "$PICKED"
                 sleep 5
                 pgrep -f "$PATTERN" >/dev/null && break
-                log "login: the wallpaper stopped right after starting (try $try). Its output is in $STATE/engine.log"
-                cp "$STATE/engine.log" "$STATE/engine-failed.log" 2>/dev/null
+                log "login: the wallpaper stopped right after starting (try $try), starting it again"
             done
         elif command -v wallpaperx >/dev/null; then
             log "login: no saved wallpaper yet, opening wallpaperx once"

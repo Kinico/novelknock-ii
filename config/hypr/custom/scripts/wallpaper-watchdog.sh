@@ -14,7 +14,7 @@ mkdir -p "$STATE"
 ARGS="$STATE/last-args"
 CWD="$STATE/last-cwd"
 LOG="$STATE/log"
-PATTERN='(^|/)linux-wallpaperengine( |$)'
+PATTERN='^([^ ]*/)?linux-wallpaperengine( |$)'   # only the engine itself: its command line starts with the program
 
 # only one watchdog at a time (the lock is not passed to the wallpaper engine, so a
 # restarted engine can never block a new watchdog from starting)
@@ -148,13 +148,26 @@ screens_ready() {
     return 0
 }
 
+ENGINE_DIR="${NK_ENGINE_DIR:-/opt/linux-wallpaperengine}"
 start_engine() {
-    mapfile -t cmd < "$ARGS"
-    local dir
+    local src="$ARGS" first=-1 n dir
+    grep -qx -- '--bg' "$ARGS" 2>/dev/null || src="$STATE/picked-args"    # damaged file: use the last picked command
+    mapfile -t cmd < "$src"
+    # keep only the options: the program is always ./linux-wallpaperengine in the engine folder
+    for n in "${!cmd[@]}"; do
+        case "${cmd[$n]}" in --*) first=$n; break ;; esac
+    done
+    if [ "$first" -lt 0 ]; then
+        log "no saved wallpaper command to start, apply one with Super+Z"
+        return 1
+    fi
+    cmd=(./linux-wallpaperengine "${cmd[@]:$first}")
     dir=$(cat "$CWD" 2>/dev/null)
+    [ -x "$dir/linux-wallpaperengine" ] || dir=$ENGINE_DIR
     (
-        cd "${dir:-/opt/linux-wallpaperengine}" || exit
-        export LD_LIBRARY_PATH="/opt/linux-wallpaperengine/lib:$LD_LIBRARY_PATH"
+        cd "$dir" || exit
+        export LD_LIBRARY_PATH="$ENGINE_DIR/lib:$LD_LIBRARY_PATH"
+        unset MANGOHUD                 # the game overlay must not load into the wallpaper
         setsid "${cmd[@]}" >/dev/null 2>&1 9>&- &
     )
 }

@@ -60,7 +60,7 @@ lines = [
     f"gpu_color={accent}", f"cpu_color={accent}", f"vram_color={accent}", f"ram_color={accent}",
     f"engine_color={accent}", f"frametime_color={accent}",
     "toggle_hud=Shift_R+F12",
-    "blacklist=zen,zen-bin,firefox,chrome,chromium,brave,mpv,vlc,obs,discord,vesktop,electron,qs,quickshell",
+    "blacklist=linux-wallpaperengine,wallpaperx,linux-wallpaper-engine,zen,zen-bin,firefox,chrome,chromium,brave,mpv,vlc,obs,discord,vesktop,electron,qs,quickshell",
 ]
 m = st["items"]
 if m["fps"]: lines += ["fps", "frametime"]

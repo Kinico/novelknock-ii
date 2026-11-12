@@ -5,15 +5,14 @@
 #   game-mode.sh status
 STATE="${XDG_STATE_HOME:-$HOME/.local/state}/wallpaper-watchdog"
 FLAG="$STATE/gamemode"                 # while this exists the watchdog leaves the wallpaper off
-PATTERN='(^|/)linux-wallpaperengine( |$)'
+PATTERN='^([^ ]*/)?linux-wallpaperengine( |$)'
 APPLY="$(dirname "$(readlink -f "$0")")/wallpaper-apply.sh"
 mkdir -p "$STATE"
 log() { echo "$(date '+%F %T') game mode: $*" >> "$STATE/log"; }
 
 case "$1" in
     on)
-        [ -e "$FLAG" ] && exit 0
-        touch "$FLAG"
+        ( set -C; : > "$FLAG" ) 2>/dev/null || exit 0      # already on (also stops two clicks at once)
         if pgrep -f "$PATTERN" >/dev/null; then
             touch "$STATE/gamemode-had-wallpaper"
             pkill -f "$PATTERN"
