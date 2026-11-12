@@ -5,6 +5,7 @@
 #   wallpaper-apply.sh apply <dir> [screen]   play it on one display (or all displays when no screen)
 #   wallpaper-apply.sh reapply                restart with the same wallpapers (after changing settings)
 #   wallpaper-apply.sh restore                start the last picked layout again (used by the watchdog at login)
+#   wallpaper-apply.sh boot                   at login: start the last wallpapers with your settings (no app needed)
 #   wallpaper-apply.sh props <dir>            the wallpaper's own options (colors, switches, sliders...) as JSON
 #   wallpaper-apply.sh autorestart on|off     turn the watchdog's auto-restart on or off
 # Global settings (the Settings page): ~/.config/linux-wallpaperengine/global-settings.json
@@ -229,6 +230,18 @@ print(json.dumps(items))
     restore)
         [ -s "$PICKED" ] && start_engine "$PICKED"
         ;;
+    boot)
+        pgrep -f '(^|/)linux-wallpaperengine( |$)' >/dev/null && exit 0     # already running
+        if [ -s "$ARGS" ]; then
+            # last wallpapers per display, rebuilt for the monitors connected right now
+            build_args - all > "$PICKED.tmp" && mv "$PICKED.tmp" "$PICKED" && args_key "$PICKED" > "$STATE/picked-key"
+        fi
+        if [ -s "$PICKED" ]; then
+            start_engine "$PICKED"
+        elif command -v wallpaperx >/dev/null; then
+            setsid wallpaperx >/dev/null 2>&1 < /dev/null &    # first time ever: let the app start one
+        fi
+        ;;
     props)
         python3 - "${2%/}/project.json" "$GLOBAL" "${XDG_CACHE_HOME:-$HOME/.cache}/novelknock/translations.json" <<'PYEOF'
 import html, json, os, re, sys, urllib.parse, urllib.request
@@ -353,6 +366,6 @@ PYEOF
         if [ "$2" = "off" ]; then touch "$STATE/paused"; else rm -f "$STATE/paused"; fi
         ;;
     *)
-        echo "usage: $0 list | info <dir> | props <dir> | apply <dir> [screen] | reapply | restore | autorestart on|off" >&2
+        echo "usage: $0 list | info <dir> | props <dir> | apply <dir> [screen] | reapply | restore | boot | autorestart on|off" >&2
         exit 1 ;;
 esac
