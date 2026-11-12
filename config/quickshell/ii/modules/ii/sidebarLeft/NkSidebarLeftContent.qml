@@ -678,6 +678,7 @@ Item {
                     HyprToggle { icon: "animation"; label: "Animations"; optionKey: "animations:enabled" }
                     HyprToggle { icon: "shadow"; label: "Shadows"; optionKey: "decoration:shadow:enabled" }
                     ModelToggle { model: gameModeModel }
+                    // (the Sunshine virtual display switch is the full-width card below this grid)
                     Card { // Do not disturb
                         Layout.fillWidth: true
                         implicitHeight: 46
@@ -704,6 +705,67 @@ Item {
                                     Notifications.silent = !Notifications.silent;
                                     checked = Qt.binding(() => Notifications.silent);
                                 }
+                            }
+                        }
+                    }
+                }
+
+                Card { // Sunshine: use a virtual display for the next stream (was Super+Alt+V)
+                    id: vdCard
+                    Layout.fillWidth: true
+                    implicitHeight: 46
+                    property bool vdOn: false
+                    // the hooks skip the virtual display while ~/.config/sunshine/hooks/disabled exists
+                    function check() {
+                        vdCheck.running = false;
+                        vdCheck.running = true;
+                    }
+                    Component.onCompleted: vdCard.check()
+                    Connections {
+                        target: GlobalStates
+                        function onSidebarLeftOpenChanged() {
+                            if (GlobalStates.sidebarLeftOpen) vdCard.check();
+                        }
+                    }
+                    Process {
+                        id: vdCheck
+                        command: ["bash", "-c", '[ -f "$HOME/.config/sunshine/hooks/disabled" ] && echo off || echo on']
+                        stdout: StdioCollector {
+                            id: vdCheckOut
+                            onStreamFinished: vdCard.vdOn = vdCheckOut.text.trim() === "on"
+                        }
+                    }
+                    RowLayout {
+                        anchors {
+                            fill: parent
+                            leftMargin: 12
+                            rightMargin: 10
+                        }
+                        spacing: 8
+                        MaterialSymbol {
+                            text: "cast"
+                            iconSize: 18
+                            color: root.textColor
+                        }
+                        NkText {
+                            Layout.fillWidth: true
+                            text: "Virtual display for streams"
+                            font.pixelSize: 13
+                            elide: Text.ElideRight
+                        }
+                        NkText {
+                            text: vdCard.vdOn ? "Next stream gets its own display" : "Next stream uses a monitor"
+                            font.pixelSize: 11
+                            opacity: 0.65
+                        }
+                        StyledSwitch {
+                            checked: vdCard.vdOn
+                            onClicked: {
+                                vdCard.vdOn = checked;
+                                Quickshell.execDetached(["bash", "-c", checked
+                                    ? 'rm -f "$HOME/.config/sunshine/hooks/disabled"'
+                                    : 'mkdir -p "$HOME/.config/sunshine/hooks" && touch "$HOME/.config/sunshine/hooks/disabled"']);
+                                checked = Qt.binding(() => vdCard.vdOn);
                             }
                         }
                     }

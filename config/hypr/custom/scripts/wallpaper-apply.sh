@@ -262,7 +262,24 @@ print(json.dumps(items))
             prev=$cur
             sleep 1
         done
-        if [ -s "$ARGS" ]; then
+        # Settings > "Random favorite at login": pick one of your starred wallpapers
+        fav=$(workshop_dirs | python3 -c '
+import json, os, random, sys
+cfg = sys.argv[1]
+try:
+    if not json.load(open(os.path.join(cfg, "global-settings.json"))).get("randomFavorite"):
+        sys.exit(0)
+    favs = [str(f) for f in json.load(open(os.path.join(cfg, "favorites.json")))]
+except Exception:
+    sys.exit(0)
+dirs = [os.path.join(r, f) for r in sys.stdin.read().split() for f in favs
+        if os.path.isfile(os.path.join(r, f, "project.json"))]
+if dirs:
+    print(random.choice(dirs))
+' "$(dirname "$SETTINGS")")
+        if [ -n "$fav" ]; then
+            build_args "$fav" all > "$PICKED.tmp" && mv "$PICKED.tmp" "$PICKED" && args_key "$PICKED" > "$STATE/picked-key"
+        elif [ -s "$ARGS" ]; then
             # last wallpapers per display, rebuilt for the monitors connected right now
             build_args - all > "$PICKED.tmp" && mv "$PICKED.tmp" "$PICKED" && args_key "$PICKED" > "$STATE/picked-key"
         fi

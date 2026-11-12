@@ -647,7 +647,8 @@ Scope {
         color: "transparent"
         WlrLayershell.namespace: "quickshell:mediaFullscreen"
         WlrLayershell.layer: WlrLayer.Overlay
-        WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
+        // OnDemand: the view takes keys when you click it, and you can still type in other windows
+        WlrLayershell.keyboardFocus: WlrKeyboardFocus.OnDemand
         anchors {
             top: true
             bottom: true
@@ -1036,7 +1037,7 @@ Scope {
                         font.pixelSize: 12
                         color: "#ffffff"
                         opacity: 0.45
-                        text: root.lyricState === "plain" ? "These lyrics have no timing, scroll to read  •  LRCLIB" : root.lyricState === "synced" ? "Click a line to jump  •  Esc to close  •  Lyrics from LRCLIB" : "Esc to close"
+                        text: root.lyricState === "plain" ? "These lyrics have no timing, scroll to read  •  LRCLIB" : root.lyricState === "synced" ? "Click a line to jump  •  Super+X to close  •  Lyrics from LRCLIB" : "Super+X to close"
                     }
                 }
             }

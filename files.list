@@ -12,6 +12,7 @@ quickshell/ii/services/HyprlandData.qml
 quickshell/ii/modules/ii/sidebarRight/volumeMixer/VolumeDialogContent.qml
 quickshell/ii/modules/ii/sidebarRight/volumeMixer/VolumeMixerEntry.qml
 quickshell/ii/modules/ii/wallpaperSelector/WallpaperSelectorContent.qml
+quickshell/ii/modules/ii/wallpaperSelector/WallpaperSelector.qml
 quickshell/ii/modules/common/Persistent.qml
 quickshell/ii/modules/common/models/quickToggles/GameModeToggle.qml
 quickshell/ii/modules/ii/overlay/OverlayContext.qml

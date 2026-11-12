@@ -58,7 +58,29 @@ MouseArea {
     property bool weLoading: false
 
     // filters, remembered between openings
-    property var prefs: ({ libType: "all", libRating: "all", libSort: "newest", wsSort: "trend", wsType: "all", wsRating: "all" })
+    property var prefs: ({ libType: "all", libRating: "all", libSort: "newest", libFav: false, wsSort: "trend", wsType: "all", wsRating: "all" })
+    // favorite wallpapers (ids), kept in ~/.config/linux-wallpaperengine/favorites.json
+    property var weFavs: []
+    function isFav(id) {
+        return root.weFavs.includes(id);
+    }
+    function toggleFav(id) {
+        if (!id) return;
+        root.weFavs = root.isFav(id) ? root.weFavs.filter(f => f !== id) : root.weFavs.concat([id]);
+        favFile.setText(JSON.stringify(root.weFavs));
+    }
+    FileView {
+        id: favFile
+        path: `${root.weStateDir}/favorites.json`
+        onLoaded: {
+            try {
+                const f = JSON.parse(favFile.text());
+                root.weFavs = Array.isArray(f) ? f : [];
+            } catch (e) {
+                root.weFavs = [];
+            }
+        }
+    }
     function setPref(key, value) {
         const p = Object.assign({}, root.prefs);
         p[key] = value;
@@ -79,6 +101,7 @@ MouseArea {
         const q = root.weFilter.toLowerCase().trim();
         let list = root.weItems.filter(i => (root.prefs.libType === "all" || i.type === root.prefs.libType)
             && (root.prefs.libRating === "all" || (i.rating ?? "Everyone") === root.prefs.libRating)
+            && (!root.prefs.libFav || root.weFavs.includes(i.id))
             && (q.length === 0 || i.title.toLowerCase().includes(q) || i.id.includes(q)));
         if (root.prefs.libSort === "title") list = list.slice().sort((a, b) => a.title.localeCompare(b.title));
         return list;
@@ -88,8 +111,9 @@ MouseArea {
         if (!on) Wallpapers.searchQuery = filterField.text;
         if (on && root.weItems.length === 0) root.weRefresh();
     }
+    property string weItemsJson: ""
     function weRefresh() {
-        root.weLoading = true;
+        root.weLoading = root.weItems.length === 0; // later refreshes happen quietly in the background
         weListProc.running = false;
         weListProc.running = true;
     }
@@ -109,10 +133,15 @@ MouseArea {
         stdout: StdioCollector {
             id: weListCollector
             onStreamFinished: {
-                try {
-                    root.weItems = JSON.parse(weListCollector.text);
-                } catch (e) {
-                    root.weItems = [];
+                const text = weListCollector.text.trim();
+                if (text !== root.weItemsJson) { // unchanged list: leave the grid (and its scroll position) alone
+                    try {
+                        root.weItems = JSON.parse(text);
+                        root.weItemsJson = text;
+                    } catch (e) {
+                        root.weItems = [];
+                        root.weItemsJson = "";
+                    }
                 }
                 root.weLoading = false;
                 if (!root.weSel) {
@@ -219,7 +248,7 @@ MouseArea {
     }
 
     // ----- global settings (Settings tab) and the wallpaper's own options -----
-    readonly property var weGlobalDefaults: ({ fps: 30, pauseFullscreen: false, scaling: "fill", volume: 100, mute: true, noautomute: false, audio: true, mouse: true, parallax: true, particles: true, autoRestart: true, translate: true })
+    readonly property var weGlobalDefaults: ({ fps: 30, pauseFullscreen: false, scaling: "fill", volume: 100, mute: true, noautomute: false, audio: true, mouse: true, parallax: true, particles: true, autoRestart: true, translate: true, randomFavorite: false })
     property var weGlobal: weGlobalDefaults
     property var weProps: []
     property bool wePropsLoading: false
@@ -241,7 +270,7 @@ MouseArea {
         if (key === "autoRestart" || key === null)
             Quickshell.execDetached(["bash", root.weScript, "autorestart", root.g("autoRestart") ? "on" : "off"]);
         if (key === "translate") root.loadProps(root.weSel);
-        else if (key !== "autoRestart") reapplyTimer.restart();
+        else if (key !== "autoRestart" && key !== "randomFavorite") reapplyTimer.restart();
     }
     function setColorsOn(on) {
         root.weColorsOn = on;
@@ -892,6 +921,13 @@ MouseArea {
                         // Library filters (click to switch)
                         HeaderChip {
                             visible: root.weTab === "library"
+                            chipIcon: "star"
+                            chipLabel: `Favorites ${root.weFavs.length}`
+                            toggled: !!root.prefs.libFav
+                            onClicked: root.setPref("libFav", !root.prefs.libFav)
+                        }
+                        HeaderChip {
+                            visible: root.weTab === "library"
                             chipIcon: "category"
                             chipLabel: root.typeNames[root.prefs.libType]
                             toggled: root.prefs.libType !== "all"
@@ -1174,6 +1210,33 @@ MouseArea {
                                             iconSize: 20
                                             color: Appearance.colors.colPrimary
                                         }
+                                        Rectangle { // favorite star: always shown on favorites, on hover for the rest
+                                            readonly property bool fav: root.weFavs.includes(weItem.modelData.id)
+                                            visible: fav || weItem.containsMouse || weFavMouse.containsMouse
+                                            anchors {
+                                                left: parent.left
+                                                top: parent.top
+                                                margins: 6
+                                            }
+                                            width: 26
+                                            height: 26
+                                            radius: 13
+                                            color: ColorUtils.transparentize("#000000", 0.45)
+                                            MaterialSymbol {
+                                                anchors.centerIn: parent
+                                                text: "star"
+                                                fill: parent.fav ? 1 : 0
+                                                iconSize: 18
+                                                color: parent.fav ? "#ffd54a" : "#ffffff"
+                                            }
+                                            MouseArea {
+                                                id: weFavMouse
+                                                anchors.fill: parent
+                                                hoverEnabled: true
+                                                cursorShape: Qt.PointingHandCursor
+                                                onClicked: root.toggleFav(weItem.modelData.id)
+                                            }
+                                        }
                                     }
 
                                     StyledText {
@@ -1446,6 +1509,17 @@ MouseArea {
                                             onClicked: {
                                                 root.setGlobal("pauseFullscreen", checked);
                                                 checked = Qt.binding(() => root.g("pauseFullscreen"));
+                                            }
+                                        }
+                                    }
+                                    SettingsRow {
+                                        rowText: "Random favorite at login"
+                                        rowHint: "Each login starts with a random wallpaper from your favorites"
+                                        StyledSwitch {
+                                            checked: root.g("randomFavorite")
+                                            onClicked: {
+                                                root.setGlobal("randomFavorite", checked);
+                                                checked = Qt.binding(() => root.g("randomFavorite"));
                                             }
                                         }
                                     }
@@ -1799,16 +1873,40 @@ MouseArea {
                             }
                         }
 
-                        // title
-                        StyledText {
+                        // title + favorite star
+                        RowLayout {
                             Layout.fillWidth: true
-                            text: weDetails.item?.title ?? ""
-                            wrapMode: Text.Wrap
-                            maximumLineCount: 3
-                            elide: Text.ElideRight
-                            font.pixelSize: Appearance.font.pixelSize.large
-                            font.weight: Font.DemiBold
-                            color: Appearance.colors.colOnLayer1
+                            spacing: 6
+                            StyledText {
+                                Layout.fillWidth: true
+                                text: weDetails.item?.title ?? ""
+                                wrapMode: Text.Wrap
+                                maximumLineCount: 3
+                                elide: Text.ElideRight
+                                font.pixelSize: Appearance.font.pixelSize.large
+                                font.weight: Font.DemiBold
+                                color: Appearance.colors.colOnLayer1
+                            }
+                            RippleButton {
+                                visible: !weDetails.workshop
+                                Layout.alignment: Qt.AlignTop
+                                implicitWidth: 36
+                                implicitHeight: 36
+                                buttonRadius: 18
+                                readonly property bool fav: root.weFavs.includes(weDetails.item?.id ?? "")
+                                onClicked: root.toggleFav(weDetails.item?.id)
+                                contentItem: MaterialSymbol {
+                                    horizontalAlignment: Text.AlignHCenter
+                                    verticalAlignment: Text.AlignVCenter
+                                    text: "star"
+                                    fill: parent.fav ? 1 : 0
+                                    iconSize: 22
+                                    color: parent.fav ? "#ffd54a" : Appearance.colors.colOnLayer1
+                                }
+                                StyledToolTip {
+                                    text: parent.fav ? "Remove from favorites" : "Add to favorites"
+                                }
+                            }
                         }
                         StyledText {
                             Layout.fillWidth: true
@@ -2369,8 +2467,9 @@ MouseArea {
     Connections {
         target: GlobalStates
         function onWallpaperSelectorOpenChanged() {
-            if (GlobalStates.wallpaperSelectorOpen && monitorIsFocused) {
+            if (GlobalStates.wallpaperSelectorOpen) {
                 filterField.forceActiveFocus();
+                if (root.weMode) root.weRefresh(); // pick up new downloads
             }
         }
     }
