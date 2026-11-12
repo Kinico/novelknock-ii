@@ -120,7 +120,7 @@ MouseArea {
     }
     function activeGrid() {
         if (!root.weMode) return grid;
-        return root.weTab === "workshop" ? wsGrid : weGrid;
+        return root.weTab === "workshop" ? wsGrid : root.weTab === "combos" ? comboGrid : weGrid;
     }
     function applyWe(dir) {
         if (!dir) return;
@@ -261,8 +261,83 @@ MouseArea {
         return `${Math.round(bytes / 1024)} KB`;
     }
 
+    // ----- display combos (Combos tab): which wallpaper goes on which display -----
+    property var weCombos: []   // [{ id, screens: { "DP-3": "<wallpaper id>", ... } }]
+    function saveCombos() {
+        comboFile.setText(JSON.stringify(root.weCombos, null, 2));
+    }
+    function sameCombo(a, b) {
+        const ka = Object.keys(a).sort(), kb = Object.keys(b).sort();
+        return ka.length === kb.length && ka.every((k, i) => k === kb[i] && a[k] === b[k]);
+    }
+    function saveCurrentCombo() {
+        const scr = Object.assign({}, root.weScreens);
+        if (Object.keys(scr).length === 0) {
+            root.weMessage = "Nothing is playing yet. Apply wallpapers to your displays first.";
+            return;
+        }
+        if (root.weCombos.some(c => root.sameCombo(c.screens ?? {}, scr))) {
+            root.weMessage = "This combo is already saved";
+            applyMessageTimer.restart();
+            return;
+        }
+        root.weCombos = root.weCombos.concat([{ id: `c${Date.now()}`, screens: scr }]);
+        root.saveCombos();
+        root.weMessage = "Combo saved";
+        applyMessageTimer.restart();
+    }
+    function deleteCombo(id) {
+        root.weCombos = root.weCombos.filter(c => c.id !== id);
+        root.saveCombos();
+    }
+    function wallpaperById(id) {
+        return root.weItems.find(i => i.id === id) ?? null;
+    }
+    function applyCombo(combo, close) {
+        const map = {};
+        for (const s of Object.keys(combo.screens ?? {})) {
+            const w = root.wallpaperById(combo.screens[s]);
+            if (w) map[s] = w.dir;
+        }
+        if (Object.keys(map).length === 0) {
+            root.weMessage = "The wallpapers in this combo are no longer installed";
+            return;
+        }
+        Quickshell.execDetached(["bash", root.weScript, "apply-map", JSON.stringify(map)]);
+        if (close) {
+            filterField.text = "";
+            GlobalStates.wallpaperSelectorOpen = false;
+        } else {
+            root.weMessage = "Combo applied";
+            applyMessageTimer.restart();
+        }
+    }
+    function isCurrentCombo(combo) {
+        return root.sameCombo(combo.screens ?? {}, root.weScreens);
+    }
+    // only one random mode at a time
+    function setRandomMode(mode) { // "off", "favorite", "combo"
+        const all = Object.assign({}, root.weGlobal);
+        all.randomFavorite = mode === "favorite";
+        all.randomCombo = mode === "combo";
+        root.weGlobal = all;
+        globalFile.setText(JSON.stringify(all, null, 2));
+    }
+    FileView {
+        id: comboFile
+        path: `${root.weStateDir}/combos.json`
+        onLoaded: {
+            try {
+                const c = JSON.parse(comboFile.text());
+                root.weCombos = Array.isArray(c) ? c : [];
+            } catch (e) {
+                root.weCombos = [];
+            }
+        }
+    }
+
     // ----- global settings (Settings tab) and the wallpaper's own options -----
-    readonly property var weGlobalDefaults: ({ fps: 30, pauseFullscreen: false, scaling: "fill", volume: 100, mute: true, noautomute: false, audio: true, mouse: true, parallax: true, particles: true, autoRestart: true, translate: true, randomFavorite: false })
+    readonly property var weGlobalDefaults: ({ fps: 30, pauseFullscreen: false, scaling: "fill", volume: 100, mute: true, noautomute: false, audio: true, mouse: true, parallax: true, particles: true, autoRestart: true, translate: true, randomFavorite: false, randomCombo: false })
     property var weGlobal: weGlobalDefaults
     property var weProps: []
     property bool wePropsLoading: false
@@ -923,6 +998,12 @@ MouseArea {
                             onClicked: root.setWeTab("favorites")
                         }
                         HeaderChip {
+                            chipIcon: "dashboard_customize"
+                            chipLabel: `Combos ${root.weCombos.length}`
+                            toggled: root.weTab === "combos"
+                            onClicked: root.setWeTab("combos")
+                        }
+                        HeaderChip {
                             chipIcon: "storefront"
                             chipLabel: "Workshop"
                             toggled: root.weTab === "workshop"
@@ -939,12 +1020,37 @@ MouseArea {
                         }
 
                         // Library filters (click to switch)
+                        StyledText { // Combos tab: short messages ("Combo saved")
+                            visible: root.weTab === "combos" && root.weMessage.length > 0
+                            text: root.weMessage
+                            font.pixelSize: Appearance.font.pixelSize.small
+                            color: Appearance.colors.colPrimary
+                        }
+                        HeaderChip { // Combos tab: save what is on the displays now
+                            visible: root.weTab === "combos"
+                            chipIcon: "add"
+                            chipLabel: "Save current combo"
+                            onClicked: root.saveCurrentCombo()
+                            StyledToolTip {
+                                text: "Saves which wallpaper is on each display right now"
+                            }
+                        }
+                        HeaderChip { // Combos tab: start each login with a random saved combo
+                            visible: root.weTab === "combos"
+                            chipIcon: root.g("randomCombo") ? "shuffle_on" : "shuffle"
+                            chipLabel: root.g("randomCombo") ? "Random at login: on" : "Random at login: off"
+                            toggled: !!root.g("randomCombo")
+                            onClicked: root.setRandomMode(root.g("randomCombo") ? "off" : "combo")
+                            StyledToolTip {
+                                text: "When on, every login starts with a random saved combo, each wallpaper on its own display"
+                            }
+                        }
                         HeaderChip { // Favorites tab only: start each login with a random favorite
                             visible: root.weTab === "favorites"
                             chipIcon: root.g("randomFavorite") ? "shuffle_on" : "shuffle"
                             chipLabel: root.g("randomFavorite") ? "Random at login: on" : "Random at login: off"
                             toggled: !!root.g("randomFavorite")
-                            onClicked: root.setGlobal("randomFavorite", !root.g("randomFavorite"))
+                            onClicked: root.setRandomMode(root.g("randomFavorite") ? "off" : "favorite")
                             StyledToolTip {
                                 text: "When on, every login starts with a random wallpaper from your favorites"
                             }
@@ -1541,8 +1647,19 @@ MouseArea {
                                         StyledSwitch {
                                             checked: root.g("randomFavorite")
                                             onClicked: {
-                                                root.setGlobal("randomFavorite", checked);
+                                                root.setRandomMode(checked ? "favorite" : "off");
                                                 checked = Qt.binding(() => root.g("randomFavorite"));
+                                            }
+                                        }
+                                    }
+                                    SettingsRow {
+                                        rowText: "Random combo at login"
+                                        rowHint: "Each login starts with a random saved combo (Combos tab), each wallpaper on its own display"
+                                        StyledSwitch {
+                                            checked: !!root.g("randomCombo")
+                                            onClicked: {
+                                                root.setRandomMode(checked ? "combo" : "off");
+                                                checked = Qt.binding(() => !!root.g("randomCombo"));
                                             }
                                         }
                                     }
@@ -1714,6 +1831,219 @@ MouseArea {
                         }
                     }
 
+                    GridView { // Combos tab
+                        id: comboGrid
+                        visible: root.weMode && root.weTab === "combos"
+                        property int currentIndex: 0
+                        anchors.fill: parent
+                        cellWidth: width / 3
+                        cellHeight: cellWidth * 0.5
+                        interactive: true
+                        clip: true
+                        boundsBehavior: Flickable.StopAtBounds
+                        bottomMargin: extraOptions.implicitHeight
+                        ScrollBar.vertical: StyledScrollBar {}
+                        model: root.weCombos
+
+                        function moveSelection(delta) {
+                            currentIndex = Math.max(0, Math.min(count - 1, currentIndex + delta));
+                            positionViewAtIndex(currentIndex, GridView.Contain);
+                        }
+                        function activateCurrent() {
+                            if (root.weCombos[currentIndex]) root.applyCombo(root.weCombos[currentIndex], true);
+                        }
+
+                        delegate: MouseArea {
+                            id: comboItem
+                            required property var modelData
+                            required property int index
+                            readonly property var screenNames: Object.keys(modelData.screens ?? {}).sort()
+                            readonly property bool isCurrent: root.isCurrentCombo(modelData)
+                            width: comboGrid.cellWidth
+                            height: comboGrid.cellHeight
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onEntered: comboGrid.currentIndex = index
+                            onDoubleClicked: root.applyCombo(modelData, true)
+
+                            Rectangle {
+                                anchors {
+                                    fill: parent
+                                    margins: Appearance.sizes.wallpaperSelectorItemMargins
+                                }
+                                radius: Appearance.rounding.normal
+                                color: comboItem.containsMouse || comboHoverArea.containsMouse ? Appearance.colors.colPrimary : comboItem.isCurrent ? Appearance.colors.colSecondaryContainer : ColorUtils.transparentize(Appearance.colors.colPrimaryContainer)
+
+                                ColumnLayout {
+                                    anchors {
+                                        fill: parent
+                                        margins: Appearance.sizes.wallpaperSelectorItemPadding
+                                    }
+                                    spacing: 4
+
+                                    Row { // one preview per display
+                                        id: comboPreviews
+                                        Layout.fillWidth: true
+                                        Layout.fillHeight: true
+                                        spacing: 4
+                                        Repeater {
+                                            model: comboItem.screenNames
+                                            delegate: Item {
+                                                id: comboShot
+                                                required property string modelData
+                                                readonly property var wp: root.wallpaperById(comboItem.modelData.screens[modelData])
+                                                width: (comboPreviews.width - comboPreviews.spacing * (comboItem.screenNames.length - 1)) / Math.max(1, comboItem.screenNames.length)
+                                                height: comboPreviews.height
+                                                Rectangle {
+                                                    anchors.fill: parent
+                                                    radius: Appearance.rounding.small
+                                                    color: Appearance.colors.colLayer2
+                                                    visible: !comboShot.wp
+                                                    StyledText {
+                                                        anchors.centerIn: parent
+                                                        text: "Not installed"
+                                                        font.pixelSize: Appearance.font.pixelSize.smaller
+                                                        color: Appearance.colors.colSubtext
+                                                    }
+                                                }
+                                                Image {
+                                                    id: comboImg
+                                                    anchors.fill: parent
+                                                    visible: !!comboShot.wp
+                                                    source: comboShot.wp && comboShot.wp.preview.length > 0 ? `file://${comboShot.wp.preview}` : ""
+                                                    sourceSize.width: comboGrid.cellWidth / 2
+                                                    sourceSize.height: comboGrid.cellHeight
+                                                    fillMode: Image.PreserveAspectCrop
+                                                    asynchronous: true
+                                                    layer.enabled: true
+                                                    layer.effect: OpacityMask {
+                                                        maskSource: Rectangle {
+                                                            width: comboImg.width
+                                                            height: comboImg.height
+                                                            radius: Appearance.rounding.small
+                                                        }
+                                                    }
+                                                }
+                                                Rectangle { // display name
+                                                    anchors {
+                                                        left: parent.left
+                                                        bottom: parent.bottom
+                                                        margins: 6
+                                                    }
+                                                    implicitWidth: comboScreenText.implicitWidth + 12
+                                                    implicitHeight: 18
+                                                    radius: 6
+                                                    color: ColorUtils.transparentize("#000000", 0.4)
+                                                    StyledText {
+                                                        id: comboScreenText
+                                                        anchors.centerIn: parent
+                                                        text: comboShot.modelData
+                                                        font.pixelSize: 10
+                                                        color: "#ffffff"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        Layout.leftMargin: 6
+                                        Layout.rightMargin: 4
+                                        spacing: 4
+                                        MaterialSymbol {
+                                            visible: comboItem.isCurrent
+                                            text: "check_circle"
+                                            fill: 1
+                                            iconSize: 16
+                                            color: comboItem.containsMouse ? Appearance.colors.colOnPrimary : Appearance.colors.colPrimary
+                                        }
+                                        StyledText {
+                                            Layout.fillWidth: true
+                                            elide: Text.ElideRight
+                                            font.pixelSize: Appearance.font.pixelSize.smaller
+                                            color: comboItem.containsMouse || comboHoverArea.containsMouse ? Appearance.colors.colOnPrimary : Appearance.colors.colOnLayer0
+                                            text: comboItem.screenNames.map(s => root.wallpaperById(comboItem.modelData.screens[s])?.title ?? "missing").join("  +  ")
+                                        }
+                                        Row { // apply / delete, on hover
+                                            spacing: 2
+                                            opacity: comboItem.containsMouse || comboHoverArea.containsMouse ? 1 : 0
+                                            MouseArea {
+                                                id: comboHoverArea
+                                                width: 56
+                                                height: 26
+                                                hoverEnabled: true
+                                                Row {
+                                                    anchors.centerIn: parent
+                                                    spacing: 2
+                                                    Repeater {
+                                                        model: [["play_arrow", "apply"], ["delete", "delete"]]
+                                                        delegate: Rectangle {
+                                                            id: comboBtn
+                                                            required property var modelData
+                                                            width: 26
+                                                            height: 26
+                                                            radius: 13
+                                                            color: comboBtnMouse.containsMouse ? ColorUtils.transparentize("#ffffff", 0.7) : "transparent"
+                                                            MaterialSymbol {
+                                                                anchors.centerIn: parent
+                                                                text: comboBtn.modelData[0]
+                                                                fill: 1
+                                                                iconSize: 17
+                                                                color: Appearance.colors.colOnPrimary
+                                                            }
+                                                            MouseArea {
+                                                                id: comboBtnMouse
+                                                                anchors.fill: parent
+                                                                hoverEnabled: true
+                                                                cursorShape: Qt.PointingHandCursor
+                                                                onClicked: {
+                                                                    if (comboBtn.modelData[1] === "apply") root.applyCombo(comboItem.modelData, false);
+                                                                    else root.deleteCombo(comboItem.modelData.id);
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        layer.enabled: true
+                        layer.effect: OpacityMask {
+                            maskSource: Rectangle {
+                                width: gridDisplayRegion.width
+                                height: gridDisplayRegion.height
+                                radius: wallpaperGridBackground.radius
+                            }
+                        }
+                    }
+
+                    ColumnLayout { // Combos tab: nothing saved yet / messages
+                        anchors.centerIn: parent
+                        visible: root.weMode && root.weTab === "combos" && root.weCombos.length === 0
+                        width: Math.min(parent.width - 80, 520)
+                        spacing: 8
+                        MaterialSymbol {
+                            visible: root.weCombos.length === 0
+                            Layout.alignment: Qt.AlignHCenter
+                            text: "dashboard_customize"
+                            iconSize: 40
+                            color: Appearance.colors.colSubtext
+                        }
+                        StyledText {
+                            Layout.fillWidth: true
+                            horizontalAlignment: Text.AlignHCenter
+                            wrapMode: Text.Wrap
+                            color: Appearance.colors.colSubtext
+                            text: root.weMessage.length > 0 ? root.weMessage
+                                : "No combos yet. Put the wallpapers you want on each display (Library, then the arrow next to Apply), come back here and press Save current combo."
+                        }
+                    }
+
                     Row {
                         id: extraOptions
                         anchors {
@@ -1816,7 +2146,7 @@ MouseArea {
 
             Rectangle { // details panel (Wallpaper Engine)
                 id: weDetails
-                visible: root.weMode && root.weTab !== "settings"
+                visible: root.weMode && root.weTab !== "settings" && root.weTab !== "combos"
                 readonly property bool workshop: root.weTab === "workshop"
                 readonly property var item: workshop ? root.wsSel : root.weSel
                 Layout.fillHeight: true

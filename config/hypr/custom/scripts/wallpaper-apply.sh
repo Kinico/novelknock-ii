@@ -4,6 +4,7 @@
 #   wallpaper-apply.sh info <dir>             size, tags and resolution of one wallpaper (JSON)
 #   wallpaper-apply.sh apply <dir> [screen]   play it on one display (or all displays when no screen)
 #   wallpaper-apply.sh reapply                restart with the same wallpapers (after changing settings)
+#   wallpaper-apply.sh apply-map '<json>'     play a saved combo: {"DP-3": "<folder>", "HDMI-A-1": "<folder>"}
 #   wallpaper-apply.sh restore                start the last picked layout again (used by the watchdog at login)
 #   wallpaper-apply.sh boot                   at login: start the last wallpapers with your settings (no app needed)
 #   wallpaper-apply.sh props <dir>            the wallpaper's own options (colors, switches, sliders...) as JSON
@@ -116,11 +117,18 @@ for s in screens:
     mapping.setdefault(s, default_bg)
 
 order = monitors or screens
-if new_dir != "-":
+fallback = default_bg
+if new_dir.startswith("map:"):            # a saved combo: {display: wallpaper folder}
+    newmap = json.loads(new_dir[4:])
+    for s in order:
+        if newmap.get(s):
+            mapping[s] = newmap[s]
+    fallback = next(iter(newmap.values()), default_bg)
+elif new_dir != "-":
     for s in order:
         if target in ("all", "") or s == target:
             mapping[s] = new_dir
-fallback = new_dir if new_dir != "-" else default_bg
+    fallback = new_dir
 for s in order:
     if not mapping.get(s):
         mapping[s] = fallback
@@ -233,6 +241,13 @@ print(json.dumps(items))
         args_key "$PICKED" > "$STATE/picked-key"
         start_engine "$PICKED"
         ;;
+    apply-map)
+        [ -n "$2" ] || exit 1
+        build_args "map:$2" all > "$PICKED.tmp" || exit 1
+        mv "$PICKED.tmp" "$PICKED"
+        args_key "$PICKED" > "$STATE/picked-key"
+        start_engine "$PICKED"
+        ;;
     reapply)
         [ -s "$ARGS" ] || exit 0
         build_args - all > "$PICKED.tmp" || exit 1
@@ -262,6 +277,32 @@ print(json.dumps(items))
             prev=$cur
             sleep 1
         done
+        # Combos tab > "Random combo at login": pick one saved combo, each wallpaper on its own display
+        combo=$(workshop_dirs | python3 -c '
+import json, os, random, sys
+cfg, monitors = sys.argv[1], [m for m in sys.argv[2].split() if m]
+try:
+    if not json.load(open(os.path.join(cfg, "global-settings.json"))).get("randomCombo"):
+        sys.exit(0)
+    combos = json.load(open(os.path.join(cfg, "combos.json")))
+except Exception:
+    sys.exit(0)
+roots = sys.stdin.read().split()
+def folder(wid):
+    for r in roots:
+        d = os.path.join(r, str(wid))
+        if os.path.isfile(os.path.join(d, "project.json")):
+            return d
+    return ""
+usable = []
+for c in combos if isinstance(combos, list) else []:
+    m = {s: folder(w) for s, w in (c.get("screens") or {}).items() if s in monitors}
+    m = {s: d for s, d in m.items() if d}
+    if m:
+        usable.append(m)
+if usable:
+    print(json.dumps(random.choice(usable)))
+' "$(dirname "$SETTINGS")" "$cur")
         # Settings > "Random favorite at login": pick one of your starred wallpapers
         fav=$(workshop_dirs | python3 -c '
 import json, os, random, sys
@@ -277,7 +318,9 @@ dirs = [os.path.join(r, f) for r in sys.stdin.read().split() for f in favs
 if dirs:
     print(random.choice(dirs))
 ' "$(dirname "$SETTINGS")")
-        if [ -n "$fav" ]; then
+        if [ -n "$combo" ]; then
+            build_args "map:$combo" all > "$PICKED.tmp" && mv "$PICKED.tmp" "$PICKED" && args_key "$PICKED" > "$STATE/picked-key"
+        elif [ -n "$fav" ]; then
             build_args "$fav" all > "$PICKED.tmp" && mv "$PICKED.tmp" "$PICKED" && args_key "$PICKED" > "$STATE/picked-key"
         elif [ -s "$ARGS" ]; then
             # last wallpapers per display, rebuilt for the monitors connected right now
@@ -422,6 +465,6 @@ PYEOF
         if [ "$2" = "off" ]; then touch "$STATE/paused"; else rm -f "$STATE/paused"; fi
         ;;
     *)
-        echo "usage: $0 list | info <dir> | props <dir> | apply <dir> [screen] | reapply | restore | boot | autorestart on|off" >&2
+        echo "usage: $0 list | info <dir> | props <dir> | apply <dir> [screen] | apply-map <json> | reapply | restore | boot | autorestart on|off" >&2
         exit 1 ;;
 esac
