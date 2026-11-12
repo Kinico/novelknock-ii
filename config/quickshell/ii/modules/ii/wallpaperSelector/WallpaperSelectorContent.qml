@@ -218,9 +218,10 @@ MouseArea {
     }
 
     // ----- global settings (Settings tab) and the wallpaper's own options -----
-    readonly property var weGlobalDefaults: ({ fps: 30, pauseFullscreen: false, scaling: "fill", volume: 100, mute: true, noautomute: false, audio: true, mouse: true, parallax: true, particles: true, autoRestart: true })
+    readonly property var weGlobalDefaults: ({ fps: 30, pauseFullscreen: false, scaling: "fill", volume: 100, mute: true, noautomute: false, audio: true, mouse: true, parallax: true, particles: true, autoRestart: true, translate: true })
     property var weGlobal: weGlobalDefaults
     property var weProps: []
+    property bool wePropsLoading: false
     property bool weColorsOn: true
     property string wsStatus: ""
     function g(key) {
@@ -238,7 +239,8 @@ MouseArea {
         globalFile.setText(JSON.stringify(all, null, 2));
         if (key === "autoRestart" || key === null)
             Quickshell.execDetached(["bash", root.weScript, "autorestart", root.g("autoRestart") ? "on" : "off"]);
-        if (key !== "autoRestart") reapplyTimer.restart();
+        if (key === "translate") root.loadProps(root.weSel);
+        else if (key !== "autoRestart") reapplyTimer.restart();
     }
     function setColorsOn(on) {
         root.weColorsOn = on;
@@ -262,6 +264,7 @@ MouseArea {
     function loadProps(item) {
         root.weProps = [];
         if (!item) return;
+        root.wePropsLoading = true;
         wePropsProc.running = false;
         wePropsProc.command = ["bash", root.weScript, "props", item.dir];
         wePropsProc.running = true;
@@ -284,6 +287,7 @@ MouseArea {
                 } catch (e) {
                     root.weProps = [];
                 }
+                root.wePropsLoading = false;
             }
         }
     }
@@ -1448,6 +1452,17 @@ MouseArea {
                                         }
                                     }
                                     SettingsRow {
+                                        rowText: "Translate wallpaper options to English"
+                                        rowHint: "Uses Google Translate once per label, then works offline"
+                                        StyledSwitch {
+                                            checked: root.g("translate")
+                                            onClicked: {
+                                                root.setGlobal("translate", checked);
+                                                checked = Qt.binding(() => root.g("translate"));
+                                            }
+                                        }
+                                    }
+                                    SettingsRow {
                                         rowText: "Match theme colors to the wallpaper"
                                         rowHint: "Bar, sidebars and apps follow the wallpaper"
                                         StyledSwitch {
@@ -2139,6 +2154,14 @@ MouseArea {
                                 font.pixelSize: Appearance.font.pixelSize.smaller
                                 color: Appearance.colors.colPrimary
                                 text: "All wallpapers are muted in Settings, turn that off to hear this one."
+                            }
+
+                            StyledText {
+                                visible: root.wePropsLoading
+                                Layout.fillWidth: true
+                                text: "Loading wallpaper options..."
+                                font.pixelSize: Appearance.font.pixelSize.small
+                                color: Appearance.colors.colSubtext
                             }
 
                             // ===== the wallpaper's own options =====

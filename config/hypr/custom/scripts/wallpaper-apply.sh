@@ -9,7 +9,7 @@
 #   wallpaper-apply.sh autorestart on|off     turn the watchdog's auto-restart on or off
 # Global settings (the Settings page): ~/.config/linux-wallpaperengine/global-settings.json
 #   { "fps": 30, "pauseFullscreen": false, "scaling": "fill", "volume": 100, "mute": true, "noautomute": false,
-#     "audio": true, "mouse": true, "parallax": true, "particles": true, "autoRestart": true }
+#     "audio": true, "mouse": true, "parallax": true, "particles": true, "autoRestart": true, "translate": true }
 # Per-wallpaper settings override them: ~/.config/linux-wallpaperengine/wallpaper-settings.json
 #   { "<id>": { "scaling": "fit", "volume": 60, ..., "props": { "<option name>": <value> } } }
 # Wallpaper and scaling are per display. Volume, audio, mouse, parallax and particles are shared by the
@@ -230,8 +230,8 @@ print(json.dumps(items))
         [ -s "$PICKED" ] && start_engine "$PICKED"
         ;;
     props)
-        python3 - "${2%/}/project.json" <<'PYEOF'
-import html, json, re, sys
+        python3 - "${2%/}/project.json" "$GLOBAL" "${XDG_CACHE_HOME:-$HOME/.cache}/novelknock/translations.json" <<'PYEOF'
+import html, json, os, re, sys, urllib.parse, urllib.request
 try:
     pj = json.load(open(sys.argv[1], encoding="utf-8", errors="replace"))
 except Exception:
@@ -281,7 +281,72 @@ for name, p in sorted(props.items(), key=lambda kv: (kv[1] or {}).get("order", 0
     else:
         continue                       # files, folders and groups are not supported here
     out.append(item)
-print(json.dumps(out))
+
+# ---- English labels: keep the English half of bilingual labels, translate the rest once and cache it ----
+try:
+    translate_on = json.load(open(sys.argv[2])).get("translate", True)
+except Exception:
+    translate_on = True
+CJK_ETC = re.compile(r"[^\x00-\x7F\u00C0-\u024F]")      # anything that is not plain or accented Latin
+def needs(t):
+    return bool(CJK_ETC.search(t or ""))
+def english_half(t):
+    latin = CJK_ETC.sub(" ", t)
+    latin = re.sub(r"\s+", " ", latin).strip(" /|:-_()[]{}.,")
+    words = re.findall(r"[A-Za-z]{3,}", latin)
+    return latin if len(words) >= 1 and len("".join(words)) >= 4 else ""
+def clean(t):
+    return re.sub(r"^[^\w(]+", "", t).strip()
+
+cache_p = sys.argv[3]
+try:
+    cache = json.load(open(cache_p))
+except Exception:
+    cache = {}
+todo = []
+def english(t):
+    if not translate_on or not needs(t):
+        return t
+    half = english_half(t)
+    if half:
+        return clean(half)
+    if t in cache:
+        return cache[t]
+    todo.append(t)
+    return t
+
+labels = []
+for item in out:
+    labels.append(item["label"])
+    for o in item.get("options", []):
+        labels.append(o["label"])
+for t in labels:
+    english(t)
+todo = list(dict.fromkeys(todo))
+if todo:
+    try:
+        q = "\n".join(todo)
+        url = "https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=en&dt=t&q=" + urllib.parse.quote(q)
+        with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"}), timeout=6) as r:
+            data = json.loads(r.read().decode("utf-8"))
+        text = "".join(seg[0] for seg in data[0] if seg and seg[0])
+        parts = [x.strip() for x in text.split("\n")]
+        if len(parts) == len(todo):
+            for src, dst in zip(todo, parts):
+                if dst:
+                    cache[src] = clean(dst) or dst
+        os.makedirs(os.path.dirname(cache_p), exist_ok=True)
+        json.dump(cache, open(cache_p, "w"), ensure_ascii=False, indent=1)
+    except Exception:
+        pass                       # offline: keep the original text, try again next time
+for item in out:
+    orig = item["label"]
+    item["label"] = english(orig) if translate_on else orig
+    if item["label"] != orig:
+        item["original"] = orig
+    for o in item.get("options", []):
+        o["label"] = english(o["label"]) if translate_on else o["label"]
+print(json.dumps(out, ensure_ascii=False))
 PYEOF
         ;;
     autorestart)
