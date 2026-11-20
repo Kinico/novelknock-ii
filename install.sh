@@ -34,6 +34,21 @@ else
 fi
 cd "$DIR" || exit 1
 
+# 1b. Fresh machine: no end-4 ii yet, so install it first (NovelKnock replaces parts of it)
+if [ ! -f "$CFG/quickshell/ii/shell.qml" ]; then
+    say "end-4 dots-hyprland (ii) is not installed yet, installing it first"
+    echo "Follow its prompts. When it finishes, this installer carries on with NovelKnock."
+    E4="$HOME/.cache/dots-hyprland"
+    if [ -d "$E4/.git" ]; then
+        git -C "$E4" pull --ff-only || true
+    else
+        git clone https://github.com/end-4/dots-hyprland.git "$E4" --filter=blob:none || { echo "Could not download end-4 dots."; exit 1; }
+    fi
+    ( cd "$E4" && ./setup install ) || { echo "end-4 setup did not finish. Fix that, then run this installer again."; exit 1; }
+    [ -f "$CFG/quickshell/ii/shell.qml" ] || { echo "ii still not found after end-4 setup. Run this installer again after it works."; exit 1; }
+    cd "$DIR" || exit 1
+fi
+
 # 2. Back up what is about to be replaced
 BACKUP="$HOME/Documents/novelknock-ii-backup-$(date +%Y-%m-%d_%H-%M-%S)"
 say "Backing up your current files to $BACKUP"
