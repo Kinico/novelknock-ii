@@ -66,13 +66,13 @@ done
 # Use SDDM as the login screen, unless another one is already set up
 cur="$(readlink -f /etc/systemd/system/display-manager.service 2>/dev/null)"
 if [ -z "$cur" ] || [ ! -e "$cur" ]; then
-    sudo systemctl enable sddm.service
+    sudo systemctl enable -f sddm.service
 elif [ "$(basename "$cur")" != "sddm.service" ]; then
     # e.g. CachyOS Hyprland uses greetd (the Noctalia login screen): switch to SDDM
     other="$(basename "$cur")"
     echo "Switching the login screen from ${other%.service} to SDDM"
     sudo systemctl disable "$other"
-    sudo systemctl enable sddm.service
+    sudo systemctl enable -f sddm.service
 fi
 echo "Login screen set ($THEME). You will see it next time you log out or reboot."
 echo "Preview now: sddm-greeter-qt6 --test-mode --theme $PREVIEW"
