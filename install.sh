@@ -8,10 +8,9 @@
 set -u
 # (everything is inside { } so it loads fully before running, which keeps "curl | bash" safe)
 {
-# LITE mode for weaker laptops:  bash install.sh --lite
+# LITE mode for weaker laptops:  curl -sL .../install.sh | bash -s -- --lite
 # (no Wallpaper Engine, no blur or shadows, bar wave off, no PC monitor layout). Remembered for later updates.
 # To go back to the full version:  bash install.sh --full
-# Laptops (anything with a battery) get LITE automatically the first time.
 NKS="$HOME/.config/novelknock"
 mkdir -p "$NKS"
 for a in "$@"; do
@@ -20,10 +19,6 @@ for a in "$@"; do
         --full) touch "$NKS/full"; rm -f "$NKS/lite" ;;
     esac
 done
-if [ ! -f "$NKS/lite" ] && [ ! -f "$NKS/full" ] && ls /sys/class/power_supply/BAT* >/dev/null 2>&1; then
-    echo "Laptop detected: using the LITE version (run with --full to get everything)."
-    touch "$NKS/lite"
-fi
 REPO_URL="https://github.com/Kinico/novelknock-ii.git"
 DIR="${NK_DIR:-$HOME/Documents/novelknock-ii}"
 CFG="$HOME/.config"
