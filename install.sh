@@ -11,12 +11,16 @@ set -u
 # LITE mode for weaker laptops:  curl -sL .../install.sh | bash -s -- --lite
 # (no Wallpaper Engine, no blur or shadows, bar wave off, no PC monitor layout). Remembered for later updates.
 # To go back to the full version:  bash install.sh --full
+# Login screen: asked once. Force with --sddm, skip with --no-sddm. Change the look: bash sddm-setup.sh <preset>
+NK_SDDM=""
 NKS="$HOME/.config/novelknock"
 mkdir -p "$NKS"
 for a in "$@"; do
     case "$a" in
         --lite) touch "$NKS/lite"; rm -f "$NKS/full" ;;
         --full) touch "$NKS/full"; rm -f "$NKS/lite" ;;
+        --sddm) rm -f "$NKS/sddm-skip"; NK_SDDM=yes ;;
+        --no-sddm) touch "$NKS/sddm-skip"; NK_SDDM=no ;;
     esac
 done
 REPO_URL="https://github.com/Kinico/novelknock-ii.git"
@@ -66,6 +70,19 @@ done
 # 3. Install and lock (asks for your sudo password)
 say "Installing into ~/.config"
 bash ./restore-novelknock.sh
+
+# 3b. Login screen: KDE Plasma's Breeze with your wallpaper. Asked once, the answer is remembered.
+SDDM_ARGS=""
+want="${NK_SDDM:-}"
+if [ -z "$want" ] && [ ! -f "$NKS/sddm-done" ] && [ ! -f "$NKS/sddm-skip" ]; then
+    printf '\nUse the KDE Plasma login screen (with your wallpaper)? [Y/n] '
+    read -r ans < /dev/tty || ans=n
+    case "$ans" in [nN]*) want=no; touch "$NKS/sddm-skip" ;; *) want=yes ;; esac
+fi
+if [ "$want" = yes ]; then
+    say "Setting up the login screen"
+    bash "$DIR/sddm-setup.sh" $SDDM_ARGS && touch "$NKS/sddm-done"
+fi
 
 # 4. Wallpaper watchdog (full version only)
 if [ -f "$CFG/novelknock/lite" ]; then

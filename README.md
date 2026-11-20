@@ -23,6 +23,11 @@ Same look, lighter: no Wallpaper Engine or watchdog (plain picture wallpaper), n
 bar music wave off (turn it on in Super+A if you want), cava only runs while the music sheet is open,
 no EasyEffects, no PC monitor layout. Updates remember it. Back to the full version: `... | bash -s -- --full`.
 
+## Login screen
+The installer asks once if you want KDE Plasma's Breeze login screen (SDDM), with your wallpaper as the background.
+After changing wallpaper, run `bash sddm-setup.sh` again to update it. Prefer Keyitdev's sddm-astronaut?
+`bash sddm-setup.sh pixel_sakura` (or any of its presets).
+
 ## Scripts
 - `install.sh`            the one-line installer above
 - `save-novelknock.sh`    copy current files from ~/.config into here and push to GitHub
