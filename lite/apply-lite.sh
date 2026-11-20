@@ -7,7 +7,7 @@ CFG="$HOME/.config"
 
 echo "Applying LITE settings..."
 # 1. Laptop versions of the Hyprland files
-for f in hypr/hyprland/execs.lua hypr/custom/env.lua hypr/custom/rules.lua; do
+for f in hypr/hyprland/execs.lua hypr/custom/env.lua hypr/custom/rules.lua hypr/custom/scripts/swipe-workspace.sh; do
     mkdir -p "$(dirname "$CFG/$f")"
     cp -v "$LITE/$f" "$CFG/$f"
 done

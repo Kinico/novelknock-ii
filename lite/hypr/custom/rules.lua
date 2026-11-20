@@ -45,6 +45,8 @@ hl.config({
 hl.layer_rule({ match = { namespace = "quickshell:(bar|sidebarLeft|sidebarRight|mediaControls|wallpaperSelector|overview)" }, blur = true })
 hl.layer_rule({ match = { namespace = "quickshell:(bar|sidebarLeft|sidebarRight|mediaControls|wallpaperSelector|overview)" }, ignore_alpha = 0.2 })
 
--- Touchpad: two-finger swipe left/right switches workspace
--- (the 3- and 4-finger gestures from end-4 still work too)
-hl.gesture({ fingers = 2, direction = "horizontal", action = "workspace" })
+-- Touchpad: two-finger swipe left/right switches workspace.
+-- Linux treats 2 fingers as scrolling, never as a swipe, so this catches the sideways scroll instead.
+-- The script only switches once per swipe. Side effect: apps no longer get sideways scrolling.
+hl.bind("mouse_right", hl.dsp.exec_cmd("bash $HOME/.config/hypr/custom/scripts/swipe-workspace.sh next"))
+hl.bind("mouse_left",  hl.dsp.exec_cmd("bash $HOME/.config/hypr/custom/scripts/swipe-workspace.sh prev"))
