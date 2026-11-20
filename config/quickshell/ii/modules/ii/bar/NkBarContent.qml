@@ -45,7 +45,7 @@ Item {
     readonly property color wsEmpty: ColorUtils.transparentize(Appearance.colors.colOnLayer0, 0.68)
 
     // Workspaces shown per monitor (matches your Hyprland workspace rules).
-    // Monitors not listed here show 1-10 in groups of ten.
+    // Monitors not listed here (like a laptop screen) follow Settings > Bar > "Workspaces shown".
     readonly property var nkMonitorRanges: ({
         "HDMI-A-1": [1, 5],
         "DP-3": [6, 10]
@@ -554,8 +554,9 @@ Item {
 
             WaveBorder {}
             readonly property var fixedRange: root.nkMonitorRanges[root.monitor?.name ?? ""] ?? null
-            readonly property int first: fixedRange ? fixedRange[0] : Math.floor((activeId - 1) / 10) * 10 + 1
-            readonly property int last: fixedRange ? fixedRange[1] : first + 9
+            readonly property int groupSize: Math.max(1, Config.options.bar.workspaces.shown ?? 10)
+            readonly property int first: fixedRange ? fixedRange[0] : Math.floor((activeId - 1) / groupSize) * groupSize + 1
+            readonly property int last: fixedRange ? fixedRange[1] : first + groupSize - 1
             readonly property int count: last - first + 1
             readonly property int activeIndex: activeId - first
             readonly property bool activeInRange: activeId >= first && activeId <= last
