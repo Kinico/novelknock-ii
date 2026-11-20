@@ -35,6 +35,10 @@ entry = """                            {
 open(p, "w").write(s.replace(entry, ""))
 PY
 
+# 3b. ii draws the wallpaper itself (on the PC Wallpaper Engine does, so NovelKnock turns ii's layer off)
+fam="$CFG/quickshell/ii/panelFamilies/IllogicalImpulseFamily.qml"
+[ -f "$fam" ] && sed -i 's|^\(\s*\)// PanelLoader { component: Background {} }|\1PanelLoader { component: Background {} } // NovelKnock lite: ii draws the wallpaper|' "$fam"
+
 # 4. ii settings: no blur on the lock screen, no zoom animation, slower system stats polling,
 #    and the wallpaper path from the PC is cleared if that file is not on this machine
 cfg="$CFG/illogical-impulse/config.json"
