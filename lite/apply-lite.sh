@@ -7,10 +7,20 @@ CFG="$HOME/.config"
 
 echo "Applying LITE settings..."
 # 1. Laptop versions of the Hyprland files
-for f in hypr/hyprland/execs.lua hypr/custom/env.lua hypr/custom/rules.lua hypr/custom/scripts/swipe-workspace.sh; do
+for f in hypr/hyprland/execs.lua hypr/custom/env.lua hypr/custom/rules.lua hypr/custom/scripts/nk-swipe.py; do
     mkdir -p "$(dirname "$CFG/$f")"
     cp -v "$LITE/$f" "$CFG/$f"
 done
+
+# 1b. Two-finger swipe reads the touchpad, which needs the "input" group (takes effect after logging in again)
+if ! id -nG "$USER" | tr ' ' '\n' | grep -qx input; then
+    echo "Adding $USER to the input group for the two-finger swipe (log out and back in after this)"
+    sudo usermod -aG input "$USER"
+fi
+pkill -f nk-swipe.py 2>/dev/null
+if [ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ] && id -nG "$USER" | tr ' ' '\n' | grep -qx input; then
+    setsid python3 "$CFG/hypr/custom/scripts/nk-swipe.py" >/dev/null 2>&1 < /dev/null &
+fi
 
 # 2. Bar music wave off by default (cava then only runs while the music sheet is open)
 mkdir -p "$CFG/novelknock"

@@ -11,6 +11,9 @@ hl.on("hyprland.start", function ()
     hl.exec_cmd("dbus-update-activation-environment --all")
     hl.exec_cmd("sleep 1 && dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP")
 
+    -- Touchpad: two-finger swipe left/right switches workspace
+    hl.exec_cmd("python3 $HOME/.config/hypr/custom/scripts/nk-swipe.py")
+
     -- Clipboard: history
     hl.exec_cmd("wl-paste --type text --watch bash -c 'cliphist store && qs -c $qsConfig ipc call cliphistService update'")
     hl.exec_cmd("wl-paste --type image --watch bash -c 'cliphist store && qs -c $qsConfig ipc call cliphistService update'")
