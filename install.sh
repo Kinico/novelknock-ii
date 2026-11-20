@@ -6,6 +6,15 @@
 # - Copies everything into ~/.config and locks it against updates
 # - Starts the wallpaper watchdog and restarts Quickshell
 set -u
+# LITE mode for weaker laptops:  bash install.sh --lite
+# (no Wallpaper Engine, no blur or shadows, bar wave off, no PC monitor layout). Remembered for later updates.
+# To go back to the full version:  bash install.sh --full
+for a in "$@"; do
+    case "$a" in
+        --lite) mkdir -p "$HOME/.config/novelknock"; touch "$HOME/.config/novelknock/lite" ;;
+        --full) rm -f "$HOME/.config/novelknock/lite" ;;
+    esac
+done
 REPO_URL="https://github.com/Kinico/novelknock-ii.git"
 DIR="${NK_DIR:-$HOME/Documents/novelknock-ii}"
 CFG="$HOME/.config"
@@ -39,12 +48,18 @@ done
 say "Installing into ~/.config"
 bash ./restore-novelknock.sh
 
-# 4. Wallpaper watchdog
-say "Starting the wallpaper watchdog"
-pkill -f wallpaper-watchdog.sh 2>/dev/null
-sleep 1
-setsid bash "$CFG/hypr/custom/scripts/wallpaper-watchdog.sh" >/dev/null 2>&1 < /dev/null &
-disown 2>/dev/null
+# 4. Wallpaper watchdog (full version only)
+if [ -f "$CFG/novelknock/lite" ]; then
+    say "LITE mode: skipping Wallpaper Engine and its watchdog"
+    pkill -f wallpaper-watchdog.sh 2>/dev/null
+    pkill -f linux-wallpaperengine 2>/dev/null
+else
+    say "Starting the wallpaper watchdog"
+    pkill -f wallpaper-watchdog.sh 2>/dev/null
+    sleep 1
+    setsid bash "$CFG/hypr/custom/scripts/wallpaper-watchdog.sh" >/dev/null 2>&1 < /dev/null &
+    disown 2>/dev/null
+fi
 
 # 5. Restart Quickshell (only inside a Hyprland session)
 if [ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]; then

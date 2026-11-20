@@ -49,6 +49,8 @@ start_engine() {   # start_engine <args file>
     done
     [ "$first" -ge 0 ] || return 1
     cmd=(./linux-wallpaperengine "${cmd[@]:$first}")
+    # hide what sits inside hidden groups (the engine misses that), see scene-fix.py
+    python3 "$(dirname "$SELF")/scene-fix.py" "${cmd[@]}" 2>> "$STATE/log"
     pkill -f "$PATTERN"
     sleep 0.5
     pgrep -f "$PATTERN" >/dev/null && pkill -9 -f "$PATTERN"

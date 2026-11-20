@@ -1,0 +1,2 @@
+-- (the window placer that moved new windows to the workspace they were launched from is turned off;
+--  to bring it back: hl.exec_cmd("python3 $HOME/.config/hypr/custom/scripts/place-windows.py"))

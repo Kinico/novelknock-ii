@@ -221,11 +221,13 @@ Item {
         property real value: 0
         property real defaultValue: 0
         property string suffix: ""
+        property bool peek: true // fade the rest of the sidebar while dragging (wallpaper sliders)
+        property int decimals: 2
         signal moved(real v)
         Layout.fillWidth: true
         spacing: 10
         NkText {
-            Layout.preferredWidth: 42
+            Layout.preferredWidth: Math.max(42, implicitWidth)
             text: ws.label
             font.pixelSize: 12
         }
@@ -264,7 +266,7 @@ Item {
                 }
                 onPressed: mouse => setFrom(mouse.x)
                 onPositionChanged: mouse => { if (pressed) setFrom(mouse.x); }
-                onPressedChanged: root.peeking = pressed // fade the rest of the sidebar while dragging
+                onPressedChanged: if (ws.peek) root.peeking = pressed // fade the rest of the sidebar while dragging
                 onDoubleClicked: ws.moved(ws.defaultValue)
                 onWheel: event => {
                     const step = (ws.to - ws.from) / 100;
@@ -275,7 +277,7 @@ Item {
         NkText {
             Layout.preferredWidth: 44
             horizontalAlignment: Text.AlignRight
-            text: `${ws.value.toFixed(2)}${ws.suffix}`
+            text: `${ws.value.toFixed(ws.decimals)}${ws.suffix}`
             font.family: Appearance.font.family.monospace
             font.pixelSize: 11
             opacity: 0.85
@@ -771,7 +773,57 @@ Item {
                     }
                 }
 
-                Card { // Wallpaper position dropdown (needs the patched linux-wallpaperengine)
+                Card { // Bar music wave: the glowing outline on the bar pills that waves with the music
+                    id: waveCard
+                    Layout.fillWidth: true
+                    implicitHeight: waveColumn.implicitHeight + 16
+                    ColumnLayout {
+                        id: waveColumn
+                        anchors {
+                            left: parent.left
+                            right: parent.right
+                            top: parent.top
+                            margins: 8
+                            leftMargin: 12
+                            rightMargin: 10
+                        }
+                        spacing: 6
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 8
+                            MaterialSymbol {
+                                text: "graphic_eq"
+                                iconSize: 18
+                                color: root.textColor
+                            }
+                            NkText {
+                                Layout.fillWidth: true
+                                text: "Bar music wave"
+                                font.pixelSize: 13
+                            }
+                            StyledSwitch {
+                                checked: NkCava.waveEnabled
+                                onClicked: {
+                                    NkCava.setWave(checked, NkCava.waveStrength);
+                                    checked = Qt.binding(() => NkCava.waveEnabled);
+                                }
+                            }
+                        }
+                        WallSlider {
+                            visible: NkCava.waveEnabled
+                            label: "Strength"
+                            from: 1
+                            to: 6
+                            defaultValue: 3
+                            decimals: 1
+                            peek: false
+                            value: NkCava.waveStrength
+                            onMoved: v => NkCava.setWave(true, v)
+                        }
+                    }
+                }
+
+                Card { // Wallpaper dropdown: position (needs the patched linux-wallpaperengine), colors, reload
                     id: wallCard
                     Layout.fillWidth: true
                     implicitHeight: wallColumn.implicitHeight + 16
@@ -859,7 +911,7 @@ Item {
                             }
                             NkText {
                                 Layout.fillWidth: true
-                                text: "Wallpaper position"
+                                text: "Wallpaper"
                                 font.pixelSize: 13
                             }
                             MaterialSymbol {
@@ -877,6 +929,11 @@ Item {
                             Layout.fillWidth: true
                             spacing: 6
 
+                            NkText { // section label
+                                text: "Position"
+                                font.pixelSize: 12
+                                font.weight: Font.DemiBold
+                            }
                             NkText { // values are saved separately for every wallpaper
                                 Layout.fillWidth: true
                                 visible: wallCard.wallTitle.length > 0
@@ -970,114 +1027,165 @@ Item {
                                     }
                                 }
                             }
+
+                            NkText { // section label
+                                Layout.topMargin: 4
+                                text: "Colors and engine"
+                                font.pixelSize: 12
+                                font.weight: Font.DemiBold
+                            }
+                            Card { // Theme colors follow the Wallpaper Engine wallpaper (wallpaper-colors.sh)
+                                color: root.sectionColor
+                                id: wallColorsCard
+                                Layout.fillWidth: true
+                                implicitHeight: 46
+                                property var cfg: ({})
+                                readonly property bool enabled_: cfg.enabled !== false
+                                readonly property string colorHex: cfg.current?.color ?? ""
+                                readonly property int count: cfg.current?.count ?? 0
+                                readonly property int pick: (cfg.picks ?? {})[cfg.current?.key ?? ""] ?? 0
+                                readonly property string script: FileUtils.trimFileProtocol(`${Directories.config}/hypr/custom/scripts/wallpaper-colors.sh`)
+                                property bool busy: false
+
+                                function run(action) {
+                                    wallColorsCard.busy = true;
+                                    busyTimer.restart();
+                                    Quickshell.execDetached(["bash", wallColorsCard.script, action]);
+                                }
+
+                                FileView {
+                                    id: colorsFile
+                                    path: FileUtils.trimFileProtocol(`${Directories.config}/linux-wallpaperengine/colors.json`)
+                                    watchChanges: true
+                                    onFileChanged: reload()
+                                    onLoaded: {
+                                        try {
+                                            wallColorsCard.cfg = JSON.parse(colorsFile.text());
+                                        } catch (e) {
+                                            wallColorsCard.cfg = {};
+                                        }
+                                        wallColorsCard.busy = false;
+                                    }
+                                }
+                                Timer {
+                                    id: busyTimer
+                                    interval: 4000
+                                    onTriggered: wallColorsCard.busy = false
+                                }
+
+                                RowLayout {
+                                    anchors {
+                                        fill: parent
+                                        leftMargin: 12
+                                        rightMargin: 10
+                                    }
+                                    spacing: 8
+                                    MaterialSymbol {
+                                        text: "palette"
+                                        iconSize: 18
+                                        color: root.textColor
+                                    }
+                                    NkText {
+                                        Layout.fillWidth: true
+                                        text: wallColorsCard.busy ? "Matching colors..." : "Match colors to wallpaper"
+                                        font.pixelSize: 13
+                                        elide: Text.ElideRight
+                                    }
+                                    Rectangle { // current theme color
+                                        visible: wallColorsCard.enabled_ && wallColorsCard.colorHex.length > 0
+                                        implicitWidth: 18
+                                        implicitHeight: 18
+                                        radius: 9
+                                        color: wallColorsCard.colorHex.length > 0 ? wallColorsCard.colorHex : "transparent"
+                                        border.width: 1
+                                        border.color: ColorUtils.transparentize(root.textColor, 0.6)
+                                    }
+                                    Rectangle { // Next color
+                                        visible: wallColorsCard.enabled_ && wallColorsCard.count > 1
+                                        implicitWidth: nextColorRow.implicitWidth + 16
+                                        implicitHeight: 28
+                                        radius: 8
+                                        color: nextColorMouse.containsMouse ? Appearance.colors.colLayer1Hover : root.sectionColor
+                                        RowLayout {
+                                            id: nextColorRow
+                                            anchors.centerIn: parent
+                                            spacing: 4
+                                            NkText {
+                                                text: `Next ${wallColorsCard.pick % Math.max(1, wallColorsCard.count) + 1}/${wallColorsCard.count}`
+                                                font.pixelSize: 12
+                                            }
+                                            MaterialSymbol {
+                                                text: "arrow_forward"
+                                                iconSize: 14
+                                                color: root.textColor
+                                            }
+                                        }
+                                        MouseArea {
+                                            id: nextColorMouse
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: wallColorsCard.run("next")
+                                        }
+                                    }
+                                    StyledSwitch {
+                                        checked: wallColorsCard.enabled_
+                                        onClicked: {
+                                            wallColorsCard.run(checked ? "on" : "off");
+                                            checked = Qt.binding(() => wallColorsCard.enabled_);
+                                        }
+                                    }
+                                }
+                            }
+                            Card { // Reload wallpaper: restarts the wallpaper engine with the last wallpaper
+                                id: reloadWallCard
+                                Layout.fillWidth: true
+                                implicitHeight: 36
+                                property bool busy: false
+                                color: reloadWallMouse.containsMouse ? Appearance.colors.colLayer1Hover : root.sectionColor
+                                RowLayout {
+                                    anchors.centerIn: parent
+                                    spacing: 6
+                                    MaterialSymbol {
+                                        text: "wallpaper"
+                                        iconSize: 18
+                                        color: root.textColor
+                                    }
+                                    NkText {
+                                        text: reloadWallCard.busy ? "Reloading..." : "Reload wallpaper"
+                                        font.pixelSize: 13
+                                    }
+                                }
+                                Timer {
+                                    id: reloadWallTimer
+                                    interval: 2500
+                                    onTriggered: reloadWallCard.busy = false
+                                }
+                                MouseArea {
+                                    id: reloadWallMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        if (reloadWallCard.busy) return;
+                                        reloadWallCard.busy = true;
+                                        reloadWallTimer.restart();
+                                        Quickshell.execDetached(["bash", "-c",
+                                            "S=\"${XDG_STATE_HOME:-$HOME/.local/state}/wallpaper-watchdog\"; " +
+                                            "pkill -f '(^|/)linux-wallpaperengine( |$)'; sleep 1; " +
+                                            "[ -s \"$S/last-args\" ] || exit 0; " +
+                                            "mapfile -t c < \"$S/last-args\"; " +
+                                            "cd \"$(cat \"$S/last-cwd\" 2>/dev/null || echo /opt/linux-wallpaperengine)\" || cd /opt/linux-wallpaperengine; " +
+                                            "export LD_LIBRARY_PATH=\"/opt/linux-wallpaperengine/lib:$LD_LIBRARY_PATH\"; " +
+                                            "setsid \"${c[@]}\" >/dev/null 2>&1 &"]);
+                                    }
+                                }
+                            }
                         }
                     }
                 }
 
-                Card { // Theme colors follow the Wallpaper Engine wallpaper (wallpaper-colors.sh)
-                    id: wallColorsCard
-                    Layout.fillWidth: true
-                    implicitHeight: 46
-                    property var cfg: ({})
-                    readonly property bool enabled_: cfg.enabled !== false
-                    readonly property string colorHex: cfg.current?.color ?? ""
-                    readonly property int count: cfg.current?.count ?? 0
-                    readonly property int pick: (cfg.picks ?? {})[cfg.current?.key ?? ""] ?? 0
-                    readonly property string script: FileUtils.trimFileProtocol(`${Directories.config}/hypr/custom/scripts/wallpaper-colors.sh`)
-                    property bool busy: false
-
-                    function run(action) {
-                        wallColorsCard.busy = true;
-                        busyTimer.restart();
-                        Quickshell.execDetached(["bash", wallColorsCard.script, action]);
-                    }
-
-                    FileView {
-                        id: colorsFile
-                        path: FileUtils.trimFileProtocol(`${Directories.config}/linux-wallpaperengine/colors.json`)
-                        watchChanges: true
-                        onFileChanged: reload()
-                        onLoaded: {
-                            try {
-                                wallColorsCard.cfg = JSON.parse(colorsFile.text());
-                            } catch (e) {
-                                wallColorsCard.cfg = {};
-                            }
-                            wallColorsCard.busy = false;
-                        }
-                    }
-                    Timer {
-                        id: busyTimer
-                        interval: 4000
-                        onTriggered: wallColorsCard.busy = false
-                    }
-
-                    RowLayout {
-                        anchors {
-                            fill: parent
-                            leftMargin: 12
-                            rightMargin: 10
-                        }
-                        spacing: 8
-                        MaterialSymbol {
-                            text: "palette"
-                            iconSize: 18
-                            color: root.textColor
-                        }
-                        NkText {
-                            Layout.fillWidth: true
-                            text: wallColorsCard.busy ? "Matching colors..." : "Match colors to wallpaper"
-                            font.pixelSize: 13
-                            elide: Text.ElideRight
-                        }
-                        Rectangle { // current theme color
-                            visible: wallColorsCard.enabled_ && wallColorsCard.colorHex.length > 0
-                            implicitWidth: 18
-                            implicitHeight: 18
-                            radius: 9
-                            color: wallColorsCard.colorHex.length > 0 ? wallColorsCard.colorHex : "transparent"
-                            border.width: 1
-                            border.color: ColorUtils.transparentize(root.textColor, 0.6)
-                        }
-                        Rectangle { // Next color
-                            visible: wallColorsCard.enabled_ && wallColorsCard.count > 1
-                            implicitWidth: nextColorRow.implicitWidth + 16
-                            implicitHeight: 28
-                            radius: 8
-                            color: nextColorMouse.containsMouse ? Appearance.colors.colLayer1Hover : root.sectionColor
-                            RowLayout {
-                                id: nextColorRow
-                                anchors.centerIn: parent
-                                spacing: 4
-                                NkText {
-                                    text: `Next ${wallColorsCard.pick % Math.max(1, wallColorsCard.count) + 1}/${wallColorsCard.count}`
-                                    font.pixelSize: 12
-                                }
-                                MaterialSymbol {
-                                    text: "arrow_forward"
-                                    iconSize: 14
-                                    color: root.textColor
-                                }
-                            }
-                            MouseArea {
-                                id: nextColorMouse
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: wallColorsCard.run("next")
-                            }
-                        }
-                        StyledSwitch {
-                            checked: wallColorsCard.enabled_
-                            onClicked: {
-                                wallColorsCard.run(checked ? "on" : "off");
-                                checked = Qt.binding(() => wallColorsCard.enabled_);
-                            }
-                        }
-                    }
-                }
-
-                RowLayout { // Reload config + Reload wallpaper
+                RowLayout { // Reload config (Reload wallpaper now sits in the Wallpaper dropdown)
                     Layout.fillWidth: true
                     spacing: 6
 
@@ -1107,50 +1215,6 @@ Item {
                         }
                     }
 
-                    Card { // Reload wallpaper: restarts the wallpaper engine with the last wallpaper
-                        id: reloadWallCard
-                        Layout.fillWidth: true
-                        implicitHeight: 40
-                        property bool busy: false
-                        color: reloadWallMouse.containsMouse ? Appearance.colors.colLayer1Hover : root.cardColor
-                        RowLayout {
-                            anchors.centerIn: parent
-                            spacing: 6
-                            MaterialSymbol {
-                                text: "wallpaper"
-                                iconSize: 18
-                                color: root.textColor
-                            }
-                            NkText {
-                                text: reloadWallCard.busy ? "Reloading..." : "Reload wallpaper"
-                                font.pixelSize: 13
-                            }
-                        }
-                        Timer {
-                            id: reloadWallTimer
-                            interval: 2500
-                            onTriggered: reloadWallCard.busy = false
-                        }
-                        MouseArea {
-                            id: reloadWallMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: {
-                                if (reloadWallCard.busy) return;
-                                reloadWallCard.busy = true;
-                                reloadWallTimer.restart();
-                                Quickshell.execDetached(["bash", "-c",
-                                    "S=\"${XDG_STATE_HOME:-$HOME/.local/state}/wallpaper-watchdog\"; " +
-                                    "pkill -f '(^|/)linux-wallpaperengine( |$)'; sleep 1; " +
-                                    "[ -s \"$S/last-args\" ] || exit 0; " +
-                                    "mapfile -t c < \"$S/last-args\"; " +
-                                    "cd \"$(cat \"$S/last-cwd\" 2>/dev/null || echo /opt/linux-wallpaperengine)\" || cd /opt/linux-wallpaperengine; " +
-                                    "export LD_LIBRARY_PATH=\"/opt/linux-wallpaperengine/lib:$LD_LIBRARY_PATH\"; " +
-                                    "setsid \"${c[@]}\" >/dev/null 2>&1 &"]);
-                            }
-                        }
-                    }
                 }
             }
 

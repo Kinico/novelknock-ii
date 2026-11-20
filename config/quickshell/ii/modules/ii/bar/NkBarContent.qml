@@ -6,6 +6,7 @@
 // Colors come from the wallpaper (Appearance.*). Keybinds are unaffected.
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Shapes
 import Quickshell
 import Quickshell.Io
 import Quickshell.Widgets
@@ -53,11 +54,38 @@ Item {
     // Slide the group aside when a sidebar opens, like NovelKnock
     // Slide until the group sits 6px from the open sidebar's header
     readonly property real sidebarHeaderInner: Appearance.sizes.sidebarWidth - Appearance.sizes.elevationMargin
+    // When a sidebar closes, the group waits until the sidebar has slid away before it slides back,
+    // so it no longer runs into the closing sidebar
+    property bool leftLinger: false
+    property bool rightLinger: false
     readonly property real groupOffset: {
         const w = group.width, W = root.width;
-        if (GlobalStates.sidebarLeftOpen) return (root.sidebarHeaderInner + 6) - (W - w) / 2;
-        if (GlobalStates.sidebarRightOpen) return (W - root.sidebarHeaderInner - 6) - (W + w) / 2;
+        const leftAt = (root.sidebarHeaderInner + 6) - (W - w) / 2;
+        const rightAt = (W - root.sidebarHeaderInner - 6) - (W + w) / 2;
+        if (GlobalStates.sidebarLeftOpen) return leftAt;
+        if (GlobalStates.sidebarRightOpen) return rightAt;
+        if (root.leftLinger) return leftAt;
+        if (root.rightLinger) return rightAt;
         return 0;
+    }
+    Connections {
+        target: GlobalStates
+        function onSidebarLeftOpenChanged() {
+            if (GlobalStates.sidebarLeftOpen) root.leftLinger = true;
+            else sidebarGoneTimer.restart();
+        }
+        function onSidebarRightOpenChanged() {
+            if (GlobalStates.sidebarRightOpen) root.rightLinger = true;
+            else sidebarGoneTimer.restart();
+        }
+    }
+    Timer {
+        id: sidebarGoneTimer
+        interval: 160 // the sidebar is mostly gone by then
+        onTriggered: {
+            root.leftLinger = GlobalStates.sidebarLeftOpen;
+            root.rightLinger = GlobalStates.sidebarRightOpen;
+        }
     }
 
     // ---------- Building blocks ----------
@@ -76,8 +104,7 @@ Item {
         signal clicked(int button)
         implicitHeight: root.pillHeight
         radius: root.pillRadius
-        color: root.pillColor
-        clip: true
+        color: NkCava.waveEnabled ? "transparent" : root.pillColor
 
         MouseArea {
             anchors.fill: parent
@@ -102,6 +129,11 @@ Item {
             }
         }
 
+        WaveBorder {}
+
+        Item { // pages are clipped here so the wave border can draw outside the pill
+            anchors.fill: parent
+            clip: true
         Column {
             id: pageColumn
             width: pill.width - (trailingLoader.active ? trailingLoader.width + 18 : 0)
@@ -113,6 +145,7 @@ Item {
                     easing.bezierCurve: [0.05, 0.7, 0.1, 1, 1, 1]
                 }
             }
+        }
         }
 
         Row { // Small page dots on the right edge
@@ -134,6 +167,94 @@ Item {
                     color: index === pill.page ? root.textColor : root.trackColor
                 }
             }
+        }
+    }
+
+    // The pill background drawn as a shape whose bottom edge flows with the music, so the wave is
+    // part of the pill (same color and blur), not a separate outline. The wave runs across the
+    // whole group, each pill shows its slice. A plain rounded pill when no music plays.
+    component WaveBorder: Shape {
+        id: wb
+        readonly property Item pill: parent
+        readonly property real m: 22            // room around the pill for the glow and the wave
+        readonly property real amp: 6 + NkCava.waveStrength * 2.5 // how far the wave can reach below the pill
+        readonly property real r: root.pillRadius
+        property var outline: []
+        property var wave: []
+        property real level: 0                  // 0 calm .. 1 loud, for the highlight
+        readonly property color calmColor: root.accent
+        readonly property color loudColor: ColorUtils.mix(Appearance.colors.colTertiary, Qt.rgba(1, 1, 1, 1), 0.65)
+        anchors.fill: parent
+        anchors.margins: -m
+        z: -1 // drawn as the pill's own background, under its content
+        visible: NkCava.waveEnabled
+        preferredRendererType: Shape.CurveRenderer
+
+        function rebuild() {
+            const W = wb.pill.width, H = wb.pill.height, m = wb.m, r = Math.min(wb.r, H / 2, W / 2);
+            if (W <= 0 || H <= 0) return;
+            const pts = NkCava.points;
+            const gain = NkCava.waveStrength;
+            const n = pts.length;
+            const gw = group.width > 0 ? group.width : W;
+            const x0 = wb.pill.x; // slice of the spectrum this pill covers
+            function sample(gx) { // 0..1 at a position along the whole group
+                if (n === 0) return 0;
+                const f = Math.max(0, Math.min(1, gx / gw)) * (n - 1);
+                const i = Math.floor(f), t = f - i;
+                const a = pts[i] ?? 0, b = pts[Math.min(n - 1, i + 1)] ?? 0;
+                return Math.min(1, (a + (b - a) * t) / 1000 * gain);
+            }
+            const out = [];
+            const arc = (cx, cy, a0, a1) => {
+                for (let k = 0; k <= 8; k++) {
+                    const a = a0 + (a1 - a0) * k / 8;
+                    out.push(Qt.point(m + cx + r * Math.cos(a), m + cy + r * Math.sin(a)));
+                }
+            };
+            // top edge left to right, right side down
+            arc(r, r, Math.PI, Math.PI * 1.5);
+            arc(W - r, r, Math.PI * 1.5, Math.PI * 2);
+            arc(W - r, H - r, 0, Math.PI / 2);
+            // bottom edge right to left, pushed down by the music
+            const wavePts = [];
+            const span = W - 2 * r;
+            const steps = Math.max(2, Math.round(span / 4));
+            let sum = 0;
+            for (let k = 0; k <= steps; k++) {
+                const u = k / steps;                    // 0 at the right corner, 1 at the left
+                const x = W - r - span * u;
+                const v = sample(x0 + x);
+                sum += v;
+                const taper = Math.sin(Math.PI * u);    // stays round at the corners
+                const p = Qt.point(m + x, m + H + wb.amp * v * taper);
+                out.push(p);
+                wavePts.push(p);
+            }
+            arc(r, H - r, Math.PI / 2, Math.PI);
+            out.push(out[0]);
+            wb.outline = out;
+            wb.wave = wavePts;
+            wb.level = n > 0 ? Math.min(1, (sum / (steps + 1)) * 1.6) : 0;
+        }
+
+        Connections {
+            target: NkCava
+            function onPointsChanged() {
+                if (NkCava.waveEnabled) wb.rebuild();
+            }
+            function onWaveEnabledChanged() {
+                Qt.callLater(wb.rebuild);
+            }
+        }
+        onWidthChanged: Qt.callLater(wb.rebuild)
+        onHeightChanged: Qt.callLater(wb.rebuild)
+        Component.onCompleted: Qt.callLater(wb.rebuild)
+
+        ShapePath { // the pill itself, its bottom edge flows with the music
+            strokeWidth: -1
+            fillColor: root.pillColor
+            PathPolyline { path: wb.outline }
         }
     }
 
@@ -215,7 +336,8 @@ Item {
         x: Math.round((root.width - width) / 2 + root.groupOffset)
         Behavior on x {
             NumberAnimation {
-                duration: 600
+                // quick snap back to the center, the longer glide only when moving aside for a sidebar
+                duration: root.groupOffset === 0 ? 280 : 600
                 easing.type: Easing.BezierSpline
                 easing.bezierCurve: [0.05, 0.7, 0.1, 1, 1, 1]
             }
@@ -427,8 +549,10 @@ Item {
             implicitWidth: root.wsSize * wsPill.count + root.wsSidePad * 2
             implicitHeight: root.pillHeight
             radius: root.pillRadius
-            color: root.pillColor
+            color: NkCava.waveEnabled ? "transparent" : root.pillColor
             readonly property int activeId: root.monitor?.activeWorkspace?.id ?? 1
+
+            WaveBorder {}
             readonly property var fixedRange: root.nkMonitorRanges[root.monitor?.name ?? ""] ?? null
             readonly property int first: fixedRange ? fixedRange[0] : Math.floor((activeId - 1) / 10) * 10 + 1
             readonly property int last: fixedRange ? fixedRange[1] : first + 9

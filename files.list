@@ -9,6 +9,10 @@ quickshell/ii/modules/ii/mediaControls/NkBottomSheet.qml
 quickshell/ii/panelFamilies/IllogicalImpulseFamily.qml
 quickshell/ii/modules/common/Appearance.qml
 quickshell/ii/services/HyprlandData.qml
+quickshell/ii/services/NkCava.qml
+quickshell/ii/modules/ii/overview/OverviewWidget.qml
+quickshell/ii/services/LauncherSearch.qml
+quickshell/ii/modules/settings/QuickConfig.qml
 quickshell/ii/modules/ii/sidebarRight/volumeMixer/VolumeDialogContent.qml
 quickshell/ii/modules/ii/sidebarRight/volumeMixer/VolumeMixerEntry.qml
 quickshell/ii/modules/ii/wallpaperSelector/WallpaperSelectorContent.qml
@@ -27,6 +31,9 @@ hypr/custom/scripts/workshop.mjs
 hypr/custom/scripts/perf-hud.sh
 hypr/custom/scripts/game-mode.sh
 hypr/custom/scripts/lyrics.py
+hypr/custom/scripts/gaps.sh
+hypr/custom/scripts/place-windows.py
+hypr/custom/scripts/scene-fix.py
 hypr/custom/keybinds.lua
 hypr/custom/rules.lua
 hypr/custom/env.lua

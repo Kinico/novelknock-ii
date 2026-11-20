@@ -26,7 +26,6 @@ Scope {
     readonly property string nkFont: "Lexend"
     readonly property real sheetHeight: 300
     property bool pinned: false
-    property list<real> visualizerPoints: []
     // Mixer rows: streams with the same app name are grouped into one row
     readonly property var appGroups: {
         const groups = {};
@@ -84,56 +83,15 @@ Scope {
     }
 
     // ===== Visualizer =====
-    // cava stays running while music plays. Starting it opens an audio capture stream, and doing that
-    // every time the sheet opened is what made the sound hiccup for a moment.
+    // cava now lives in the shared NkCava service (one capture stream for the bar wave and this sheet)
     readonly property bool visualizerShown: GlobalStates.mediaControlsOpen || root.fullscreen
-    readonly property bool cavaWanted: visualizerShown || root.player?.playbackState == MprisPlaybackState.Playing
-    onCavaWantedChanged: {
-        if (cavaWanted) {
-            cavaStopTimer.stop();
-            cavaProc.running = true;
-        } else {
-            cavaStopTimer.restart();
-        }
+    readonly property var visualizerPoints: root.visualizerShown ? NkCava.points : []
+    Binding {
+        target: NkCava
+        property: "sheetWanted"
+        value: root.visualizerShown
     }
-    onVisualizerShownChanged: {
-        if (!visualizerShown) root.visualizerPoints = [];
-    }
-    Component.onCompleted: {
-        if (root.cavaWanted) cavaProc.running = true;
-        root.fetchArt();
-    }
-    Timer { // stop cava 2 minutes after the music stops
-        id: cavaStopTimer
-        interval: 120000
-        onTriggered: {
-            if (!root.cavaWanted) cavaProc.running = false;
-        }
-    }
-    Timer { // cava quit on its own (audio restarted): start it again if it is still wanted
-        id: cavaRestartTimer
-        interval: 3000
-        onTriggered: {
-            if (root.cavaWanted) cavaProc.running = true;
-        }
-    }
-
-    Process { // Audio visualizer (same cava setup ii uses)
-        id: cavaProc
-        onRunningChanged: {
-            if (!running) {
-                root.visualizerPoints = [];
-                if (root.cavaWanted) cavaRestartTimer.restart();
-            }
-        }
-        command: ["cava", "-p", `${FileUtils.trimFileProtocol(Directories.scriptPath)}/cava/raw_output_config.txt`]
-        stdout: SplitParser {
-            onRead: data => {
-                if (!root.visualizerShown) return; // nothing is showing the bars, skip the work
-                root.visualizerPoints = data.split(";").map(p => parseFloat(p.trim())).filter(p => !isNaN(p));
-            }
-        }
-    }
+    Component.onCompleted: root.fetchArt()
 
     // ===== Fullscreen view with synced lyrics (Super+Alt+X, or the fullscreen button on the sheet) =====
     property bool fullscreen: false
@@ -199,6 +157,45 @@ Scope {
     }
     onTrackKeyChanged: {
         if (root.fullscreen) lyricDebounce.restart();
+    }
+
+    // The slide in and out animations are started by hand on the next tick, never with
+    // "Behavior on y": on this Quickshell build a Behavior inside a window that hides and shows
+    // again crashed the whole shell (QQmlInterceptorMetaObject::doIntercept).
+    property bool sheetUp: false   // small sheet window is mapped
+    property bool fsUp: false      // fullscreen window is mapped
+    onSheetOpenChanged: Qt.callLater(root.slideSheet)
+    onFullscreenChanged: Qt.callLater(root.slideFullscreen)
+    function slideSheet() {
+        sheetAnim.stop();
+        if (root.sheetOpen) {
+            if (!root.sheetUp) sheet.y = sheetWindow.height + 10; // start below the screen edge
+            root.sheetUp = true;
+            sheetAnim.to = Appearance.sizes.hyprlandGapsOut;
+        } else {
+            if (!root.sheetUp) return;
+            sheetAnim.to = sheetWindow.height + 10;
+        }
+        sheetAnim.start();
+    }
+    function sheetSlideDone() {
+        if (!root.sheetOpen) root.sheetUp = false;
+    }
+    function slideFullscreen() {
+        fsAnim.stop();
+        if (root.fullscreen) {
+            if (!root.fsUp) fsRoot.y = fsRoot.offY; // start below the screen edge
+            root.fsUp = true;
+            fsAnim.to = 0;
+            fsRoot.forceActiveFocus();
+        } else {
+            if (!root.fsUp) return;
+            fsAnim.to = fsRoot.offY;
+        }
+        fsAnim.start();
+    }
+    function fsSlideDone() {
+        if (!root.fullscreen) root.fsUp = false;
     }
     // While the fullscreen view is open the small sheet never shows. Anything that tries to open it
     // (Super+X, the bar's music pill, the bottom line) closes the fullscreen view instead.
@@ -278,7 +275,7 @@ Scope {
 
     PanelWindow {
         id: sheetWindow
-        visible: root.sheetOpen || sheet.y < sheetWindow.height
+        visible: root.sheetUp
         exclusionMode: ExclusionMode.Ignore
         exclusiveZone: 0
         implicitHeight: root.sheetHeight + Appearance.sizes.hyprlandGapsOut * 2
@@ -317,13 +314,15 @@ Scope {
             x: Appearance.sizes.hyprlandGapsOut
             width: parent.width - Appearance.sizes.hyprlandGapsOut * 2
             height: root.sheetHeight
-            y: root.sheetOpen ? Appearance.sizes.hyprlandGapsOut : sheetWindow.height + 10
-            Behavior on y {
-                NumberAnimation {
-                    duration: 350
-                    easing.type: Easing.BezierSpline
-                    easing.bezierCurve: [0.05, 0.7, 0.1, 1, 1, 1]
-                }
+            y: 5000 // set and moved by slideSheet() and sheetAnim, no binding on purpose
+            NumberAnimation {
+                id: sheetAnim
+                target: sheet
+                property: "y"
+                duration: 350
+                easing.type: Easing.BezierSpline
+                easing.bezierCurve: [0.05, 0.7, 0.1, 1, 1, 1]
+                onFinished: Qt.callLater(root.sheetSlideDone)
             }
             radius: 14
             color: ColorUtils.transparentize(ColorUtils.mix(Appearance.colors.colLayer0Base, Appearance.colors.colPrimaryContainer, 0.8), 0.25)
@@ -382,9 +381,6 @@ Scope {
                         radius: 3
                         height: Math.min(parent.height - 20, (root.visualizerPoints[index] ?? 0) / 1000 * (parent.height - 20))
                         color: ColorUtils.transparentize(Appearance.colors.colPrimary, 0.62)
-                        Behavior on height {
-                            NumberAnimation { duration: 60 }
-                        }
                     }
                 }
             }
@@ -640,7 +636,7 @@ Scope {
     PanelWindow { // fullscreen music view with lyrics
         id: fsWindow
         // stays up until the slide-down has finished, like the small sheet
-        visible: root.fullscreen || fsRoot.y < fsRoot.offY - 1
+        visible: root.fsUp
         screen: root.fsScreen ?? Quickshell.screens[0]
         exclusionMode: ExclusionMode.Ignore
         exclusiveZone: 0
@@ -663,13 +659,15 @@ Scope {
             x: 0
             width: parent.width
             height: parent.height
-            y: root.fullscreen ? 0 : offY
-            Behavior on y {
-                NumberAnimation {
-                    duration: 380
-                    easing.type: Easing.BezierSpline
-                    easing.bezierCurve: [0.05, 0.7, 0.1, 1, 1, 1]
-                }
+            y: 5000 // set and moved by slideFullscreen() and fsAnim, no binding on purpose
+            NumberAnimation {
+                id: fsAnim
+                target: fsRoot
+                property: "y"
+                duration: 380
+                easing.type: Easing.BezierSpline
+                easing.bezierCurve: [0.05, 0.7, 0.1, 1, 1, 1]
+                onFinished: Qt.callLater(root.fsSlideDone)
             }
             color: ColorUtils.mix(Appearance.colors.colLayer0Base, "#000000", 0.5)
             focus: true
@@ -684,12 +682,6 @@ Scope {
                     root.player?.previous();
                 }
                 event.accepted = true;
-            }
-            Connections {
-                target: root
-                function onFullscreenChanged() {
-                    if (root.fullscreen) fsRoot.forceActiveFocus();
-                }
             }
 
             // ---- background: blurred cover + dark tint ----
@@ -736,9 +728,6 @@ Scope {
                         radius: 4
                         height: Math.min(fsBars.height, (root.visualizerPoints[index] ?? 0) / 1000 * fsBars.height)
                         color: ColorUtils.transparentize(Appearance.colors.colPrimary, 0.72)
-                        Behavior on height {
-                            NumberAnimation { duration: 60 }
-                        }
                     }
                 }
             }
@@ -969,12 +958,6 @@ Scope {
                             color: "#ffffff"
                             opacity: current ? 1 : index < root.lyricIndex ? 0.32 : 0.5
                             text: modelData.text.length > 0 ? modelData.text : "♪"
-                            Behavior on opacity {
-                                NumberAnimation { duration: 250 }
-                            }
-                            Behavior on font.pixelSize {
-                                NumberAnimation { duration: 200 }
-                            }
                             MouseArea { // click a line to jump there
                                 anchors.fill: parent
                                 cursorShape: Qt.PointingHandCursor

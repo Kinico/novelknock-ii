@@ -15,6 +15,14 @@ It downloads this repo into `~/Documents/novelknock-ii`, backs up the files it r
 installs and locks everything, starts the wallpaper watchdog and restarts Quickshell.
 Run the same line again any time to update.
 
+## LITE version (for weaker laptops)
+```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/Kinico/novelknock-ii/master/install.sh)" _ --lite
+```
+Same look, lighter: no Wallpaper Engine or watchdog (plain picture wallpaper), no blur or shadows,
+bar music wave off (turn it on in Super+A if you want), cava only runs while the music sheet is open,
+no EasyEffects, no PC monitor layout. Updates remember it. Back to full: run the installer with `--full`.
+
 ## Scripts
 - `install.sh`            the one-line installer above
 - `save-novelknock.sh`    copy current files from ~/.config into here and push to GitHub

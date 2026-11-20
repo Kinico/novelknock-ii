@@ -1,0 +1,1 @@
+-- NovelKnock LITE: nothing extra here (the PC version forces MangoHud into every game).
