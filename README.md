@@ -19,7 +19,7 @@ Run the same line again any time to update.
 ```bash
 curl -sL https://raw.githubusercontent.com/Kinico/novelknock-ii/master/install.sh | bash -s -- --lite
 ```
-Same look, lighter: no Wallpaper Engine or watchdog (plain picture wallpaper), light "xray" blur only on kitty, Zen and the panels, no shadows,
+Same look, lighter: no Wallpaper Engine or watchdog (plain picture wallpaper), blur only on kitty, Zen and the panels, no shadows,
 bar music wave off (turn it on in Super+A if you want), cava only runs while the music sheet is open,
 no EasyEffects, no PC monitor layout. Updates remember it. Back to the full version: `... | bash -s -- --full`.
 

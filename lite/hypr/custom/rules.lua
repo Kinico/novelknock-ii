@@ -5,8 +5,7 @@ hl.window_rule({
     float = true,
 })
 
--- Blur only where it matters (kitty, Zen, the Quickshell panels), in the cheap "xray" mode:
--- xray blurs just the wallpaper once instead of every window behind, so it is light on old Intel graphics
+-- Blur only where it matters (kitty, Zen, the Quickshell panels), same settings as the PC
 hl.window_rule({
     name  = "no-blur-default",
     match = { class = ".*" },
@@ -33,19 +32,18 @@ hl.window_rule({
 hl.config({
     decoration = {
         blur = {
-            enabled = true,
-            xray    = true,  -- the cheap mode
-            size    = 3,
-            passes  = 1,     -- PC uses 2
+            enabled  = true,
+            size     = 2,     -- same blur as the PC
+            passes   = 2,
             vibrancy = 0.1696,
         },
         shadow = { enabled = false },
     },
 })
 
--- Quickshell bar, sidebars and music sheet get the same frosted look as on the PC
-hl.layer_rule({ match = { namespace = "quickshell:(bar|sidebarLeft|sidebarRight|mediaControls)" }, blur = true })
-hl.layer_rule({ match = { namespace = "quickshell:(bar|sidebarLeft|sidebarRight|mediaControls)" }, ignore_alpha = 0.2 })
+-- Quickshell bar, sidebars, music sheet, wallpaper picker (Super+Z) and overview get the frosted look
+hl.layer_rule({ match = { namespace = "quickshell:(bar|sidebarLeft|sidebarRight|mediaControls|wallpaperSelector|overview)" }, blur = true })
+hl.layer_rule({ match = { namespace = "quickshell:(bar|sidebarLeft|sidebarRight|mediaControls|wallpaperSelector|overview)" }, ignore_alpha = 0.2 })
 
 -- Touchpad: two-finger swipe left/right switches workspace
 -- (the 3- and 4-finger gestures from end-4 still work too)

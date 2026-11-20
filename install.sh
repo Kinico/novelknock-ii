@@ -9,7 +9,7 @@ set -u
 # (everything is inside { } so it loads fully before running, which keeps "curl | bash" safe)
 {
 # LITE mode for weaker laptops:  curl -sL .../install.sh | bash -s -- --lite
-# (no Wallpaper Engine, light xray blur only, no shadows, bar wave off, no PC monitor layout). Remembered for later updates.
+# (no Wallpaper Engine, blur only on kitty, Zen and panels, no shadows, bar wave off, no PC monitor layout). Remembered for later updates.
 # To go back to the full version:  bash install.sh --full
 # Login screen: asked once. Force with --sddm, skip with --no-sddm. Change the look: bash sddm-setup.sh <preset>
 NK_SDDM=""
