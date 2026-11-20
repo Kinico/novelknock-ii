@@ -53,8 +53,11 @@ Scope {
                 item: content
             }
 
-            implicitHeight: Appearance.sizes.wallpaperSelectorHeight
-            implicitWidth: Appearance.sizes.wallpaperSelectorWidth
+            // NovelKnock: never bigger than the screen it opens on (laptops with small screens)
+            implicitHeight: Math.min(Appearance.sizes.wallpaperSelectorHeight,
+                (panelWindow.screen?.height ?? 1080) - panelWindow.margins.top - Appearance.sizes.hyprlandGapsOut * 2)
+            implicitWidth: Math.min(Appearance.sizes.wallpaperSelectorWidth,
+                (panelWindow.screen?.width ?? 1920) - Appearance.sizes.hyprlandGapsOut * 2)
 
             Component.onCompleted: {
                 if (panelWindow.visible) GlobalFocusGrab.addDismissable(panelWindow);
