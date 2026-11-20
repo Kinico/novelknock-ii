@@ -28,6 +28,10 @@ The installer asks once if you want KDE Plasma's Breeze login screen (SDDM), wit
 After changing wallpaper, run `bash sddm-setup.sh` again to update it. Prefer Keyitdev's sddm-astronaut?
 `bash sddm-setup.sh pixel_sakura` (or any of its presets).
 
+## Fingerprint at the login screen (phone style)
+After `fprintd-enroll`, run `bash fingerprint-login.sh`: the Breeze login screen starts the fingerprint check by
+itself, so you just touch the sensor. Typing your password still works. Undo: `bash fingerprint-login.sh --off`.
+
 ## Scripts
 - `install.sh`            the one-line installer above
 - `save-novelknock.sh`    copy current files from ~/.config into here and push to GitHub

@@ -63,6 +63,11 @@ for f in /etc/sddm.conf /etc/sddm.conf.d/*.conf; do
     fi
 done
 
+# Fingerprint login screen turned on before (fingerprint-login.sh): rebuild it with the new background
+if [ "$THEME" = breeze ] && [ -f /etc/sddm.conf.d/.nk-finger ]; then
+    bash "$(dirname "$0")/fingerprint-login.sh"
+fi
+
 # Use SDDM as the login screen, unless another one is already set up
 cur="$(readlink -f /etc/systemd/system/display-manager.service 2>/dev/null)"
 if [ -z "$cur" ] || [ ! -e "$cur" ]; then

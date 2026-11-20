@@ -12,7 +12,14 @@ for f in hypr/hyprland/execs.lua hypr/custom/env.lua hypr/custom/rules.lua hypr/
     cp -v "$LITE/$f" "$CFG/$f"
 done
 
-# 1b. Two-finger swipe reads the touchpad, which needs the "input" group (takes effect after logging in again)
+# 1b. Two-finger swipe reads the touchpad with the libinput tool, which needs the "input" group
+#     (the group takes effect after logging in again)
+if ! command -v libinput >/dev/null 2>&1; then
+    echo "Installing the libinput tool for the two-finger swipe"
+    sudo pacman -S --needed --noconfirm libinput >/dev/null 2>&1
+    command -v libinput >/dev/null 2>&1 || sudo pacman -S --needed --noconfirm libinput-tools >/dev/null 2>&1
+    command -v libinput >/dev/null 2>&1 || echo "Could not find the libinput tool. Run: pacman -F usr/bin/libinput"
+fi
 if ! id -nG "$USER" | tr ' ' '\n' | grep -qx input; then
     echo "Adding $USER to the input group for the two-finger swipe (log out and back in after this)"
     sudo usermod -aG input "$USER"
