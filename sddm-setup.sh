@@ -30,7 +30,7 @@ if [ "$THEME" = breeze ]; then
     else
         echo "No wallpaper picked yet, keeping the Plasma background. Run this again after you pick one (Super+Z)."
     fi
-    printf '[Theme]\nCurrent=breeze\nCursorTheme=breeze_cursors\n' | sudo tee /etc/sddm.conf.d/novelknock-theme.conf >/dev/null
+    printf '[Theme]\nCurrent=breeze\nCursorTheme=breeze_cursors\n' | sudo tee /etc/sddm.conf.d/zz-novelknock-theme.conf >/dev/null
     PREVIEW="$B"
 else
     T=/usr/share/sddm/themes/sddm-astronaut-theme
@@ -46,9 +46,22 @@ else
     sudo cp -r "$T"/Fonts/* /usr/share/fonts/ 2>/dev/null
     [ -f "$T/Themes/$THEME.conf" ] || { echo "No preset called $THEME, using pixel_sakura_static."; THEME=pixel_sakura_static; }
     sudo sed -i "s|^ConfigFile=.*|ConfigFile=Themes/$THEME.conf|" "$T/metadata.desktop"
-    printf '[Theme]\nCurrent=sddm-astronaut-theme\n\n[General]\nInputMethod=qtvirtualkeyboard\n' | sudo tee /etc/sddm.conf.d/novelknock-theme.conf >/dev/null
+    printf '[Theme]\nCurrent=sddm-astronaut-theme\n\n[General]\nInputMethod=qtvirtualkeyboard\n' | sudo tee /etc/sddm.conf.d/zz-novelknock-theme.conf >/dev/null
     PREVIEW="$T"
 fi
+
+# Win over other theme settings: conf.d files load in name order (zz- goes last),
+# and /etc/sddm.conf beats all of them, so its Current= line is changed too.
+sudo rm -f /etc/sddm.conf.d/novelknock-theme.conf
+want_theme="$(sed -n 's/^Current=//p' /etc/sddm.conf.d/zz-novelknock-theme.conf)"
+for f in /etc/sddm.conf /etc/sddm.conf.d/*.conf; do
+    [ -f "$f" ] || continue
+    [ "$f" = /etc/sddm.conf.d/zz-novelknock-theme.conf ] && continue
+    if grep -q '^Current=' "$f"; then
+        echo "Overriding the theme set in $f"
+        sudo sed -i "s|^Current=.*|Current=$want_theme|" "$f"
+    fi
+done
 
 # Use SDDM as the login screen, unless another one is already set up
 cur="$(readlink -f /etc/systemd/system/display-manager.service 2>/dev/null)"
