@@ -17,11 +17,11 @@ Run the same line again any time to update.
 
 ## LITE version (for weaker laptops)
 ```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/Kinico/novelknock-ii/master/install.sh)" _ --lite
+curl -sL https://raw.githubusercontent.com/Kinico/novelknock-ii/master/install.sh | bash
 ```
-Same look, lighter: no Wallpaper Engine or watchdog (plain picture wallpaper), no blur or shadows,
+Laptops get it automatically (the installer checks for a battery). Same look, lighter: no Wallpaper Engine or watchdog (plain picture wallpaper), no blur or shadows,
 bar music wave off (turn it on in Super+A if you want), cava only runs while the music sheet is open,
-no EasyEffects, no PC monitor layout. Updates remember it. Back to full: run the installer with `--full`.
+no EasyEffects, no PC monitor layout. Updates remember it. Force a version: `... | bash -s -- --full` or `--lite`.
 
 ## Scripts
 - `install.sh`            the one-line installer above

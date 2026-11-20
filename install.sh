@@ -1,20 +1,29 @@
 #!/usr/bin/env bash
 # One-line installer for the NovelKnock-style Quickshell ii setup.
-#   bash -c "$(curl -fsSL https://raw.githubusercontent.com/Kinico/novelknock-ii/master/install.sh)"
+#   curl -sL https://raw.githubusercontent.com/Kinico/novelknock-ii/master/install.sh | bash
 # - Downloads (or updates) this repo into ~/Documents/novelknock-ii
 # - Backs up the files it is about to replace
 # - Copies everything into ~/.config and locks it against updates
 # - Starts the wallpaper watchdog and restarts Quickshell
 set -u
+# (everything is inside { } so it loads fully before running, which keeps "curl | bash" safe)
+{
 # LITE mode for weaker laptops:  bash install.sh --lite
 # (no Wallpaper Engine, no blur or shadows, bar wave off, no PC monitor layout). Remembered for later updates.
 # To go back to the full version:  bash install.sh --full
+# Laptops (anything with a battery) get LITE automatically the first time.
+NKS="$HOME/.config/novelknock"
+mkdir -p "$NKS"
 for a in "$@"; do
     case "$a" in
-        --lite) mkdir -p "$HOME/.config/novelknock"; touch "$HOME/.config/novelknock/lite" ;;
-        --full) rm -f "$HOME/.config/novelknock/lite" ;;
+        --lite) touch "$NKS/lite"; rm -f "$NKS/full" ;;
+        --full) touch "$NKS/full"; rm -f "$NKS/lite" ;;
     esac
 done
+if [ ! -f "$NKS/lite" ] && [ ! -f "$NKS/full" ] && ls /sys/class/power_supply/BAT* >/dev/null 2>&1; then
+    echo "Laptop detected: using the LITE version (run with --full to get everything)."
+    touch "$NKS/lite"
+fi
 REPO_URL="https://github.com/Kinico/novelknock-ii.git"
 DIR="${NK_DIR:-$HOME/Documents/novelknock-ii}"
 CFG="$HOME/.config"
@@ -44,7 +53,7 @@ if [ ! -f "$CFG/quickshell/ii/shell.qml" ]; then
     else
         git clone https://github.com/end-4/dots-hyprland.git "$E4" --filter=blob:none || { echo "Could not download end-4 dots."; exit 1; }
     fi
-    ( cd "$E4" && ./setup install ) || { echo "end-4 setup did not finish. Fix that, then run this installer again."; exit 1; }
+    ( cd "$E4" && ./setup install < /dev/tty ) || { echo "end-4 setup did not finish. Fix that, then run this installer again."; exit 1; }
     [ -f "$CFG/quickshell/ii/shell.qml" ] || { echo "ii still not found after end-4 setup. Run this installer again after it works."; exit 1; }
     cd "$DIR" || exit 1
 fi
@@ -90,3 +99,4 @@ fi
 say "Done"
 echo "Backup of your old files: $BACKUP"
 echo "Optional, for wallpaper zoom and X/Y: build the patched engine in $DIR/wallpaperengine (makepkg -si)"
+}
