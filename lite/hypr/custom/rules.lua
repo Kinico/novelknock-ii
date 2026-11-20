@@ -23,7 +23,8 @@ hl.config({
         blur = { enabled = false },
         shadow = { enabled = false },
     },
-    misc = {
-        vfr = true,  -- only redraw when something changes, saves battery
-    },
 })
+
+-- Touchpad: two-finger swipe left/right switches workspace
+-- (the 3- and 4-finger gestures from end-4 still work too)
+hl.gesture({ fingers = 2, direction = "horizontal", action = "workspace" })
