@@ -716,6 +716,7 @@ Item {
                     id: vdCard
                     Layout.fillWidth: true
                     implicitHeight: 46
+                    visible: !absCard.isLite // the laptop (lite) gets the absolute touchpad toggle here instead
                     property bool vdOn: false
                     // the hooks skip the virtual display while ~/.config/sunshine/hooks/disabled exists
                     function check() {
@@ -768,6 +769,72 @@ Item {
                                     ? 'rm -f "$HOME/.config/sunshine/hooks/disabled"'
                                     : 'mkdir -p "$HOME/.config/sunshine/hooks" && touch "$HOME/.config/sunshine/hooks/disabled"']);
                                 checked = Qt.binding(() => vdCard.vdOn);
+                            }
+                        }
+                    }
+                }
+
+                Card { // LITE only (laptop): absolute touchpad, the touchpad works like a drawing tablet (osu!)
+                    id: absCard
+                    Layout.fillWidth: true
+                    implicitHeight: 46
+                    visible: absCard.isLite
+                    property bool isLite: false
+                    property bool absOn: false
+                    function check() {
+                        absCheck.running = false;
+                        absCheck.running = true;
+                    }
+                    Component.onCompleted: absCard.check()
+                    Connections {
+                        target: GlobalStates
+                        function onSidebarLeftOpenChanged() {
+                            if (GlobalStates.sidebarLeftOpen) absCard.check();
+                        }
+                    }
+                    Process {
+                        id: absCheck
+                        command: ["bash", "-c", '[ -f "$HOME/.config/novelknock/lite" ] && echo lite || echo full; pgrep -f "[n]k-abs-touchpad.py" >/dev/null && echo absOn || echo absOff']
+                        stdout: StdioCollector {
+                            id: absCheckOut
+                            onStreamFinished: {
+                                const t = absCheckOut.text;
+                                absCard.isLite = t.indexOf("lite") !== -1;
+                                absCard.absOn = t.indexOf("absOn") !== -1;
+                            }
+                        }
+                    }
+                    RowLayout {
+                        anchors {
+                            fill: parent
+                            leftMargin: 12
+                            rightMargin: 10
+                        }
+                        spacing: 8
+                        MaterialSymbol {
+                            text: "draw"
+                            iconSize: 18
+                            color: root.textColor
+                        }
+                        NkText {
+                            Layout.fillWidth: true
+                            text: "Absolute touchpad"
+                            font.pixelSize: 13
+                            elide: Text.ElideRight
+                        }
+                        NkText {
+                            text: absCard.absOn ? "Works like a tablet" : "Normal touchpad"
+                            font.pixelSize: 11
+                            opacity: 0.65
+                        }
+                        StyledSwitch {
+                            checked: absCard.absOn
+                            onClicked: {
+                                absCard.absOn = checked;
+                                Quickshell.execDetached(["bash", "-c", checked
+                                    ? 'pkill -f "[n]k-abs-touchpad.py"; setsid python3 "$HOME/.config/hypr/custom/scripts/nk-abs-touchpad.py" >/dev/null 2>&1 < /dev/null &'
+                                    : 'pkill -f "[n]k-abs-touchpad.py"']);
+                                checked = Qt.binding(() => absCard.absOn);
                             }
                         }
                     }

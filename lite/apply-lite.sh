@@ -7,7 +7,7 @@ CFG="$HOME/.config"
 
 echo "Applying LITE settings..."
 # 1. Laptop versions of the Hyprland files
-for f in hypr/hyprland/execs.lua hypr/custom/env.lua hypr/custom/rules.lua hypr/custom/scripts/nk-swipe.py; do
+for f in hypr/hyprland/execs.lua hypr/custom/env.lua hypr/custom/rules.lua hypr/custom/scripts/nk-swipe.py hypr/custom/scripts/nk-abs-touchpad.py; do
     mkdir -p "$(dirname "$CFG/$f")"
     cp -v "$LITE/$f" "$CFG/$f"
 done
@@ -27,6 +27,15 @@ fi
 pkill -f nk-swipe.py 2>/dev/null
 if [ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ] && id -nG "$USER" | tr ' ' '\n' | grep -qx input; then
     setsid python3 "$CFG/hypr/custom/scripts/nk-swipe.py" >/dev/null 2>&1 < /dev/null &
+fi
+
+# 1c. Absolute touchpad (Super+A toggle): python-evdev, and /dev/uinput usable by the "input" group
+pacman -Qi python-evdev >/dev/null 2>&1 || sudo pacman -S --needed --noconfirm python-evdev >/dev/null 2>&1
+if [ ! -f /etc/udev/rules.d/60-nk-uinput.rules ]; then
+    echo 'KERNEL=="uinput", GROUP="input", MODE="0660", OPTIONS+="static_node=uinput"' | sudo tee /etc/udev/rules.d/60-nk-uinput.rules >/dev/null
+    echo uinput | sudo tee /etc/modules-load.d/nk-uinput.conf >/dev/null
+    sudo modprobe uinput
+    sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=uinput
 fi
 
 # 2. Bar music wave off by default (cava then only runs while the music sheet is open)
