@@ -11,6 +11,7 @@ import QtQuick.Layouts
 import QtQuick.Controls
 import Quickshell
 import Quickshell.Bluetooth
+import Quickshell.Io
 import qs.modules.ii.sidebarRight.bluetoothDevices
 import qs.modules.ii.sidebarRight.wifiNetworks
 
@@ -31,12 +32,14 @@ Item {
 
     // Wi-Fi and Bluetooth lists open inside the sidebar (the little arrow on each toggle)
     property bool showWifiDialog: false
+    property bool showEthernetDialog: false
     property bool showBluetoothDialog: false
     Connections {
         target: GlobalStates
         function onSidebarRightOpenChanged() {
             if (!GlobalStates.sidebarRightOpen) {
                 root.showWifiDialog = false;
+                root.showEthernetDialog = false;
                 root.showBluetoothDialog = false;
             }
         }
@@ -252,7 +255,7 @@ Item {
                     isOn: Network.ethernet || Network.wifiEnabled
                     toggle: () => Network.toggleWifi()
                     more: () => {
-                        if (Network.ethernet) Quickshell.execDetached(["bash", "-c", Config.options.apps.networkEthernet]);
+                        if (Network.ethernet) root.showEthernetDialog = true;
                         else root.showWifiDialog = true;
                     }
                 }
@@ -685,6 +688,98 @@ Item {
             if (!shown) return;
             Network.enableWifi();
             Network.rescanWifi();
+        }
+    }
+
+    ToggleDialog {
+        shownPropertyString: "showEthernetDialog"
+        dialog: EthernetDialog {}
+    }
+
+    // Wired connection info, the same details the big settings window shows on its Status tab
+    component EthernetDialog: WindowDialog {
+        id: ethDialog
+        backgroundHeight: 440
+        property var rows: []
+
+        Process {
+            running: true
+            command: ["bash", "-c", `
+                dev=$(nmcli -t -f DEVICE,TYPE,STATE dev | awk -F: '$2=="ethernet" && $3=="connected"{print $1; exit}')
+                [ -z "$dev" ] && { echo "Status|Not connected"; exit; }
+                nmcli -t -e no -f GENERAL.CONNECTION,CAPABILITIES.SPEED,GENERAL.HWADDR,IP4.ADDRESS,IP4.GATEWAY,IP4.DNS dev show "$dev" | while IFS=: read -r k v; do
+                    case "$k" in
+                        GENERAL.CONNECTION) echo "Connection|$v" ;;
+                        CAPABILITIES.SPEED) echo "Speed|$v" ;;
+                        GENERAL.HWADDR) echo "MAC address|$v" ;;
+                        IP4.ADDRESS*) echo "IPv4 address|\${v%/*}" ;;
+                        IP4.GATEWAY) echo "Gateway|$v" ;;
+                        IP4.DNS*) echo "DNS|$v" ;;
+                    esac
+                done
+                echo "Device|$dev"`]
+            stdout: StdioCollector {
+                id: ethOut
+                onStreamFinished: ethDialog.rows = ethOut.text.trim().split("\n").filter(l => l.includes("|")).map(l => l.split("|"))
+            }
+        }
+
+        WindowDialogTitle {
+            text: "Ethernet"
+        }
+        WindowDialogSeparator {}
+        ColumnLayout {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            spacing: 6
+            Repeater {
+                model: ethDialog.rows
+                delegate: RowLayout {
+                    required property var modelData
+                    Layout.fillWidth: true
+                    spacing: 10
+                    StyledText {
+                        text: modelData[0]
+                        font.pixelSize: Appearance.font.pixelSize.small
+                        color: Appearance.colors.colSubtext
+                        Layout.preferredWidth: 110
+                    }
+                    StyledText {
+                        Layout.fillWidth: true
+                        text: modelData[1]
+                        elide: Text.ElideRight
+                        font.pixelSize: Appearance.font.pixelSize.small
+                        color: Appearance.colors.colOnLayer1
+                    }
+                }
+            }
+            Item {
+                Layout.fillHeight: true
+            }
+        }
+        WindowDialogSeparator {}
+        WindowDialogButtonRow {
+            DialogButton {
+                buttonText: "Details"
+                onClicked: {
+                    Quickshell.execDetached(["bash", "-c", Config.options.apps.networkEthernet]);
+                    GlobalStates.sidebarRightOpen = false;
+                }
+            }
+            DialogButton {
+                buttonText: "Wi-Fi"
+                onClicked: {
+                    root.showEthernetDialog = false;
+                    root.showWifiDialog = true;
+                }
+            }
+            Item {
+                Layout.fillWidth: true
+            }
+            DialogButton {
+                buttonText: "Done"
+                onClicked: ethDialog.dismiss()
+            }
         }
     }
 
