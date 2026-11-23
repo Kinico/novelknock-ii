@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Layouts
+import Qt.labs.folderlistmodel
 import Qt5Compat.GraphicalEffects
 import Quickshell
 import Quickshell.Io
@@ -193,6 +194,29 @@ Scope {
         }
 
         readonly property var brightnessMonitor: Brightness.getMonitorForScreen(panel.screen)
+
+        // Covers: a random picture from ~/Pictures/Elaina/covers each time the journal opens
+        FolderListModel {
+            id: coverFolder
+            folder: `${Directories.pictures}/Elaina/covers`
+            nameFilters: ["*.png", "*.jpg", "*.jpeg", "*.webp"]
+            showDirs: false
+            onCountChanged: if (panel.coverPick === "") panel.pickCover()
+        }
+        property string coverPick: ""
+        function pickCover() {
+            if (coverFolder.count === 0) return;
+            let next = coverFolder.get(Math.floor(Math.random() * coverFolder.count), "fileUrl").toString();
+            if (next === panel.coverPick && coverFolder.count > 1)
+                next = coverFolder.get((coverFolder.indexOf(next) + 1) % coverFolder.count, "fileUrl").toString();
+            panel.coverPick = next;
+        }
+        Connections {
+            target: GlobalStates
+            function onSidebarRightOpenChanged() {
+                if (GlobalStates.sidebarRightOpen) panel.pickCover();
+            }
+        }
         readonly property MprisPlayer player: MprisController.activePlayer
 
         // ===== The page =====
@@ -277,6 +301,7 @@ Scope {
                     ElainaArt {
                         id: cover
                         name: "cover"
+                        source: panel.coverPick !== "" ? panel.coverPick : `${Directories.pictures}/Elaina/cover.${cover.exts[cover.tryIndex]}`
                         anchors.fill: parent
                         sourceSize.width: 820
                         visible: false
