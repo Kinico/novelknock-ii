@@ -22,11 +22,25 @@ Scope {
     id: bar
 
     component Ribbon: Rectangle {
-        implicitHeight: 42
+        id: ribbon
+        implicitHeight: 44
         radius: ElainaTheme.radius
         color: ElainaTheme.barFill
         border.width: 1
-        border.color: ElainaTheme.robeLine
+        border.color: ElainaTheme.barEdge
+        Behavior on implicitWidth { NumberAnimation { duration: ElainaTheme.smooth; easing.type: Easing.OutCubic } }
+        Rectangle { // soft light along the top edge
+            anchors {
+                left: parent.left
+                right: parent.right
+                top: parent.top
+                leftMargin: parent.radius
+                rightMargin: parent.radius
+                topMargin: 1
+            }
+            height: 1
+            color: Qt.rgba(1, 1, 1, 0.10)
+        }
     }
     component Serif: Text {
         font.family: ElainaTheme.serif
@@ -74,10 +88,11 @@ Scope {
                     anchors {
                         left: parent.left
                         top: parent.top
-                        leftMargin: 10
-                        topMargin: 8
+                        leftMargin: 10 + (GlobalStates.sidebarLeftOpen ? Appearance.sizes.sidebarWidth - Appearance.sizes.elevationMargin : 0)
+                        topMargin: 7
                     }
-                    implicitWidth: leftRow.implicitWidth + 24
+                    Behavior on anchors.leftMargin { NumberAnimation { duration: ElainaTheme.smooth; easing.type: Easing.OutCubic } }
+                    implicitWidth: leftRow.implicitWidth + 28
 
                     readonly property int activeId: win.monitor?.activeWorkspace?.id ?? 1
                     readonly property var fixedRange: bar.monitorRanges[win.monitor?.name ?? ""] ?? null
@@ -166,11 +181,30 @@ Scope {
                             }
                         }
 
-                        // The route: stars joined by a dotted path
+                        // The route: stars joined by a dotted path, with a glow that travels to the current stop
+                        Item {
+                        Layout.alignment: Qt.AlignVCenter
+                        implicitWidth: route.implicitWidth
+                        implicitHeight: route.implicitHeight
+                        Rectangle {
+                            id: routeGlow
+                            readonly property Item target: stopRepeater.count > 0 ? (stopRepeater.itemAt(leftRibbon.activeId - leftRibbon.first) ?? null) : null
+                            visible: !!target
+                            width: 26
+                            height: 26
+                            radius: 13
+                            y: (route.height - height) / 2
+                            x: target ? target.x + target.width - 24 - 1 : 0
+                            color: Qt.rgba(0.91, 0.78, 0.45, 0.16)
+                            border.width: 1
+                            border.color: Qt.rgba(0.91, 0.78, 0.45, 0.45)
+                            Behavior on x { NumberAnimation { duration: ElainaTheme.smooth; easing.type: Easing.OutCubic } }
+                        }
                         Row {
-                            Layout.alignment: Qt.AlignVCenter
+                            id: route
                             spacing: 0
                             Repeater {
+                                id: stopRepeater
                                 model: leftRibbon.last - leftRibbon.first + 1
                                 delegate: Row {
                                     id: stop
@@ -202,18 +236,24 @@ Scope {
                                             anchors.centerIn: parent
                                             text: "star"
                                             fill: (stop.active || stop.visited) ? 1 : 0
-                                            iconSize: stop.active ? 22 : 16
+                                            iconSize: stop.active ? 21 : 16
+                                            scale: starMouse.containsMouse && !stop.active ? 1.2 : 1
                                             color: stop.active ? ElainaTheme.gold : stop.visited ? ElainaTheme.lavender : ElainaTheme.muted
-                                            Behavior on iconSize { NumberAnimation { duration: 160 } }
+                                            Behavior on iconSize { NumberAnimation { duration: ElainaTheme.fast } }
+                                            Behavior on scale { NumberAnimation { duration: ElainaTheme.fast; easing.type: Easing.OutBack } }
+                                            Behavior on color { ColorAnimation { duration: ElainaTheme.fast } }
                                         }
                                         MouseArea {
+                                            id: starMouse
                                             anchors.fill: parent
+                                            hoverEnabled: true
                                             cursorShape: Qt.PointingHandCursor
                                             onClicked: Hyprland.dispatch(`hl.dsp.focus({workspace = ${stop.wsId}})`)
                                         }
                                     }
                                 }
                             }
+                        }
                         }
                     }
                 }
@@ -224,9 +264,11 @@ Scope {
                     anchors {
                         horizontalCenter: parent.horizontalCenter
                         top: parent.top
-                        topMargin: 8
+                        topMargin: 7
                     }
-                    implicitWidth: centerRow.implicitWidth + 32
+                    implicitWidth: centerRow.implicitWidth + 36
+                    color: clockMouse.containsMouse ? Qt.rgba(0.16, 0.17, 0.30, 0.72) : ElainaTheme.barFill
+                    Behavior on color { ColorAnimation { duration: ElainaTheme.fast } }
                     RowLayout {
                         id: centerRow
                         anchors.centerIn: parent
@@ -258,7 +300,9 @@ Scope {
                         }
                     }
                     MouseArea {
+                        id: clockMouse
                         anchors.fill: parent
+                        hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
                         onClicked: GlobalStates.sidebarRightOpen = !GlobalStates.sidebarRightOpen
                     }
@@ -270,10 +314,11 @@ Scope {
                     anchors {
                         right: parent.right
                         top: parent.top
-                        rightMargin: 10
-                        topMargin: 8
+                        rightMargin: 10 + (GlobalStates.sidebarRightOpen ? 410 : 0)
+                        topMargin: 7
                     }
-                    implicitWidth: rightRow.implicitWidth + 24
+                    Behavior on anchors.rightMargin { NumberAnimation { duration: ElainaTheme.smooth; easing.type: Easing.OutCubic } }
+                    implicitWidth: rightRow.implicitWidth + 28
                     readonly property MprisPlayer player: MprisController.activePlayer
 
                     RowLayout {

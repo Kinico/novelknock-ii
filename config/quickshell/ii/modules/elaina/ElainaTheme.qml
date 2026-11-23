@@ -18,11 +18,16 @@ Singleton {
     readonly property color muted: "#9c97b9"
     readonly property color danger: "#e58b9b"
 
-    readonly property color barFill: Qt.rgba(0.09, 0.10, 0.19, 0.80)
+    readonly property color barFill: Qt.rgba(0.09, 0.10, 0.19, 0.62)   // see-through, the compositor blurs behind it
+    readonly property color barEdge: Qt.rgba(0.73, 0.65, 0.92, 0.28)
+    readonly property color hoverFill: Qt.rgba(0.73, 0.65, 0.92, 0.16)
+    readonly property color pageFill: Qt.rgba(0.957, 0.937, 0.89, 0.93)
     readonly property color cardFill: Qt.rgba(0.13, 0.15, 0.27, 0.85)
 
     readonly property string serif: "Noto Serif"
     readonly property string sans: "Lexend"
 
     readonly property real radius: 14
+    readonly property int fast: 160
+    readonly property int smooth: 280
 }

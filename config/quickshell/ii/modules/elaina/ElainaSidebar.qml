@@ -66,6 +66,8 @@ Scope {
         border.width: 1
         border.color: charm.active ? ElainaTheme.gold : Qt.rgba(0.5, 0.36, 0.76, 0.3)
         Behavior on color { ColorAnimation { duration: 140 } }
+        scale: charmMouse.pressed ? 0.95 : charmMouse.containsMouse ? 1.03 : 1
+        Behavior on scale { NumberAnimation { duration: ElainaTheme.fast; easing.type: Easing.OutBack } }
         ColumnLayout {
             anchors.centerIn: parent
             spacing: 2
@@ -151,7 +153,20 @@ Scope {
 
     PanelWindow {
         id: panel
-        visible: GlobalStates.sidebarRightOpen
+        visible: GlobalStates.sidebarRightOpen || closeLinger.running
+        Timer {
+            id: closeLinger
+            interval: ElainaTheme.smooth + 40
+        }
+        Connections {
+            target: GlobalStates
+            function onSidebarRightOpenChanged() {
+                if (!GlobalStates.sidebarRightOpen) {
+                    closeLinger.restart();
+                    page.wasHovered = false;
+                }
+            }
+        }
         WlrLayershell.namespace: "quickshell:sidebarRight"
         WlrLayershell.keyboardFocus: GlobalStates.sidebarRightOpen ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
         exclusiveZone: 0
@@ -191,10 +206,27 @@ Scope {
                 leftMargin: 10
             }
             radius: 18
-            color: ElainaTheme.blouse
+            color: ElainaTheme.pageFill
             border.width: 2
             border.color: ElainaTheme.robe
             focus: GlobalStates.sidebarRightOpen
+            opacity: GlobalStates.sidebarRightOpen ? 1 : 0
+            Behavior on opacity { NumberAnimation { duration: ElainaTheme.smooth; easing.type: Easing.OutCubic } }
+            transform: Translate {
+                x: GlobalStates.sidebarRightOpen ? 0 : 60
+                Behavior on x { NumberAnimation { duration: ElainaTheme.smooth; easing.type: Easing.OutCubic } }
+            }
+            // "Unhover to close", same as the NovelKnock sidebars
+            property bool wasHovered: false
+            HoverHandler {
+                onHoveredChanged: {
+                    if (hovered) page.wasHovered = true;
+                    else if (page.wasHovered && GlobalStates.sidebarRightOpen) {
+                        page.wasHovered = false;
+                        GlobalStates.sidebarRightOpen = false;
+                    }
+                }
+            }
             Keys.onPressed: event => {
                 if (event.key === Qt.Key_Escape) panel.hide();
             }
@@ -451,14 +483,29 @@ Scope {
                     Layout.fillHeight: true
                     clip: true
                     spacing: 8
-                    model: [...Notifications.list].reverse()
+                    model: ScriptModel {
+                        values: [...Notifications.list].reverse()
+                    }
+                    add: Transition {
+                        NumberAnimation { property: "opacity"; from: 0; to: 1; duration: ElainaTheme.smooth }
+                        NumberAnimation { property: "x"; from: 30; to: 0; duration: ElainaTheme.smooth; easing.type: Easing.OutCubic }
+                    }
+                    remove: Transition {
+                        NumberAnimation { property: "opacity"; to: 0; duration: ElainaTheme.fast }
+                        NumberAnimation { property: "x"; to: 60; duration: ElainaTheme.fast }
+                    }
+                    displaced: Transition {
+                        NumberAnimation { property: "y"; duration: ElainaTheme.smooth; easing.type: Easing.OutCubic }
+                    }
                     delegate: Rectangle {
                         id: letter
                         required property var modelData
                         width: ListView.view.width
                         implicitHeight: letterCol.implicitHeight + 18
                         radius: 12
-                        color: Qt.rgba(0.5, 0.36, 0.76, 0.08)
+                        color: letterHover.hovered ? Qt.rgba(0.5, 0.36, 0.76, 0.15) : Qt.rgba(0.5, 0.36, 0.76, 0.08)
+                        Behavior on color { ColorAnimation { duration: ElainaTheme.fast } }
+                        HoverHandler { id: letterHover }
                         border.width: 1
                         border.color: Qt.rgba(0.5, 0.36, 0.76, 0.22)
                         ColumnLayout {
