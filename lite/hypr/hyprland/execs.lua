@@ -14,6 +14,9 @@ hl.on("hyprland.start", function ()
     -- Touchpad: two-finger swipe left/right switches workspace
     hl.exec_cmd("python3 $HOME/.config/hypr/custom/scripts/nk-swipe.py")
 
+    -- Power: Performance while plugged in, Balanced on battery (what Game mode did for calls)
+    hl.exec_cmd("bash $HOME/.config/hypr/custom/scripts/nk-power.sh")
+
     -- Clipboard: history
     hl.exec_cmd("wl-paste --type text --watch bash -c 'cliphist store && qs -c $qsConfig ipc call cliphistService update'")
     hl.exec_cmd("wl-paste --type image --watch bash -c 'cliphist store && qs -c $qsConfig ipc call cliphistService update'")

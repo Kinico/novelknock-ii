@@ -5,7 +5,8 @@ hl.window_rule({
     float = true,
 })
 
--- Blur only where it matters (kitty, Zen, the Quickshell panels), same settings as the PC
+-- Blur only on kitty and the Quickshell panels. Not on Zen, Discord or any other app window,
+-- because the laptop GPU (Intel HD 620) has to redo the blur every frame while a video call plays.
 hl.window_rule({
     name  = "no-blur-default",
     match = { class = ".*" },
@@ -20,7 +21,7 @@ hl.window_rule({
 
 hl.window_rule({
     name  = "kitty-blur",
-    match = { class = "^(kitty|zen)$" },
+    match = { class = "^(kitty)$" },
     no_blur = false,
 })
 
@@ -36,6 +37,8 @@ hl.config({
             size     = 2,     -- same blur as the PC
             passes   = 2,
             vibrancy = 0.1696,
+            popups   = false, -- no blur on right click menus and tooltips
+            special  = false, -- no blur behind the special workspace
         },
         shadow = { enabled = false },
     },

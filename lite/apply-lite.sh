@@ -7,7 +7,7 @@ CFG="$HOME/.config"
 
 echo "Applying LITE settings..."
 # 1. Laptop versions of the Hyprland files
-for f in hypr/hyprland/execs.lua hypr/custom/env.lua hypr/custom/rules.lua hypr/custom/scripts/nk-swipe.py hypr/custom/scripts/nk-abs-touchpad.py; do
+for f in hypr/hyprland/execs.lua hypr/custom/env.lua hypr/custom/rules.lua hypr/custom/scripts/nk-swipe.py hypr/custom/scripts/nk-abs-touchpad.py hypr/custom/scripts/nk-power.sh; do
     mkdir -p "$(dirname "$CFG/$f")"
     cp -v "$LITE/$f" "$CFG/$f"
 done
@@ -27,6 +27,12 @@ fi
 pkill -f nk-swipe.py 2>/dev/null
 if [ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ] && id -nG "$USER" | tr ' ' '\n' | grep -qx input; then
     setsid python3 "$CFG/hypr/custom/scripts/nk-swipe.py" >/dev/null 2>&1 < /dev/null &
+fi
+
+# 1b2. Power profile follows the charger (Performance plugged in, Balanced on battery)
+pkill -f "[n]k-power.sh" 2>/dev/null
+if [ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]; then
+    setsid bash "$CFG/hypr/custom/scripts/nk-power.sh" >/dev/null 2>&1 < /dev/null &
 fi
 
 # 1c. Absolute touchpad (Super+A toggle): python-evdev, and /dev/uinput usable by the "input" group
