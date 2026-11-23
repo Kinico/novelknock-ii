@@ -11,6 +11,7 @@ quickshell/ii/shell.qml
 quickshell/ii/panelFamilies/ElainaFamily.qml
 quickshell/ii/modules/elaina/ElainaTheme.qml
 quickshell/ii/modules/elaina/WitchHat.qml
+quickshell/ii/modules/elaina/ElainaArt.qml
 quickshell/ii/modules/elaina/ElainaBar.qml
 quickshell/ii/modules/elaina/ElainaSidebar.qml
 quickshell/ii/modules/common/Appearance.qml

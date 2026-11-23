@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Layouts
+import Qt5Compat.GraphicalEffects
 import Quickshell
 import Quickshell.Wayland
 import Quickshell.Hyprland
@@ -101,11 +102,45 @@ Scope {
                         anchors.centerIn: parent
                         spacing: 10
 
-                        WitchHat {
+                        Item { // her portrait from ~/Pictures/Elaina/avatar.*, or the drawn hat if there is none
                             Layout.alignment: Qt.AlignVCenter
-                            implicitWidth: 30
-                            implicitHeight: 26
-                            hatColor: hatMouse.containsMouse ? ElainaTheme.ribbon : ElainaTheme.robe
+                            implicitWidth: 32
+                            implicitHeight: 32
+                            ElainaArt {
+                                id: avatar
+                                name: "avatar"
+                                anchors.fill: parent
+                                sourceSize.width: 96
+                                sourceSize.height: 96
+                                visible: false
+                            }
+                            Rectangle {
+                                id: avatarMask
+                                anchors.fill: parent
+                                radius: width / 2
+                                visible: false
+                            }
+                            OpacityMask { // round crop
+                                anchors.fill: parent
+                                visible: avatar.found
+                                source: avatar
+                                maskSource: avatarMask
+                            }
+                            Rectangle { // ring
+                                anchors.fill: parent
+                                visible: avatar.found
+                                radius: width / 2
+                                color: "transparent"
+                                border.width: 1.5
+                                border.color: hatMouse.containsMouse ? ElainaTheme.gold : ElainaTheme.lavender
+                            }
+                            WitchHat {
+                                anchors.centerIn: parent
+                                visible: !avatar.found
+                                implicitWidth: 30
+                                implicitHeight: 26
+                                hatColor: hatMouse.containsMouse ? ElainaTheme.ribbon : ElainaTheme.robe
+                            }
                             MouseArea {
                                 id: hatMouse
                                 anchors.fill: parent

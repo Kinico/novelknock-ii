@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Layouts
+import Qt5Compat.GraphicalEffects
 import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
@@ -198,6 +199,22 @@ Scope {
                 if (event.key === Qt.Key_Escape) panel.hide();
             }
 
+            ElainaArt { // ~/Pictures/Elaina/page.*, a faint picture in the corner of the page
+                name: "page"
+                anchors {
+                    right: parent.right
+                    bottom: parent.bottom
+                    margins: 8
+                }
+                width: parent.width * 0.75
+                height: parent.height * 0.45
+                fillMode: Image.PreserveAspectFit
+                horizontalAlignment: Image.AlignRight
+                verticalAlignment: Image.AlignBottom
+                sourceSize.height: 700
+                opacity: 0.13
+            }
+
             // Inner stitched border, like a leather bound journal
             Rectangle {
                 anchors {
@@ -219,18 +236,53 @@ Scope {
 
                 // ----- Header -----
                 Rectangle {
+                    id: header
                     Layout.fillWidth: true
-                    implicitHeight: 82
+                    implicitHeight: cover.found ? 140 : 82
                     radius: 14
                     color: ElainaTheme.robe
+                    // Cover picture from ~/Pictures/Elaina/cover.*, cropped to the header with rounded corners
+                    ElainaArt {
+                        id: cover
+                        name: "cover"
+                        anchors.fill: parent
+                        sourceSize.width: 820
+                        visible: false
+                    }
+                    Rectangle {
+                        id: coverMask
+                        anchors.fill: parent
+                        radius: header.radius
+                        visible: false
+                    }
+                    OpacityMask {
+                        anchors.fill: parent
+                        visible: cover.found
+                        source: cover
+                        maskSource: coverMask
+                    }
+                    Rectangle { // darken the bottom so the writing stays readable
+                        anchors.fill: parent
+                        visible: cover.found
+                        radius: header.radius
+                        gradient: Gradient {
+                            GradientStop { position: 0.0; color: Qt.rgba(0.09, 0.10, 0.19, 0.05) }
+                            GradientStop { position: 0.55; color: Qt.rgba(0.09, 0.10, 0.19, 0.45) }
+                            GradientStop { position: 1.0; color: Qt.rgba(0.09, 0.10, 0.19, 0.92) }
+                        }
+                    }
                     RowLayout {
                         anchors {
-                            fill: parent
+                            left: parent.left
+                            right: parent.right
+                            bottom: parent.bottom
                             leftMargin: 16
                             rightMargin: 16
                         }
+                        height: 82
                         spacing: 14
                         WitchHat {
+                            visible: !cover.found
                             implicitWidth: 46
                             implicitHeight: 40
                             hatColor: ElainaTheme.robeSoft
@@ -464,7 +516,18 @@ Scope {
                         anchors.centerIn: parent
                         visible: letters.count === 0
                         spacing: 4
+                        ElainaArt { // ~/Pictures/Elaina/letters.*
+                            id: lettersArt
+                            name: "letters"
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            width: 170
+                            height: 130
+                            fillMode: Image.PreserveAspectFit
+                            sourceSize.height: 260
+                            opacity: 0.9
+                        }
                         MaterialSymbol {
+                            visible: !lettersArt.found
                             anchors.horizontalCenter: parent.horizontalCenter
                             text: "mail"
                             iconSize: 30
