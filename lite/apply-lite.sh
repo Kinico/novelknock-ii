@@ -29,7 +29,7 @@ if [ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ] && id -nG "$USER" | tr ' ' '\n' | g
     setsid python3 "$CFG/hypr/custom/scripts/nk-swipe.py" >/dev/null 2>&1 < /dev/null &
 fi
 
-# 1b2. Power profile follows the charger (Performance plugged in, Balanced on battery)
+# 1b2. Performance power profile (Balanced only when the battery is low)
 pkill -f "[n]k-power.sh" 2>/dev/null
 if [ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]; then
     setsid bash "$CFG/hypr/custom/scripts/nk-power.sh" >/dev/null 2>&1 < /dev/null &

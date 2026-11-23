@@ -303,6 +303,17 @@ Item {
         onTriggered: root.player.positionChanged()
     }
 
+    // LITE (laptop) marker, written by install.sh --lite
+    property bool isLite: false
+    Process {
+        running: true
+        command: ["bash", "-c", '[ -f "$HOME/.config/novelknock/lite" ] && echo lite || echo full']
+        stdout: StdioCollector {
+            id: liteOut
+            onStreamFinished: root.isLite = liteOut.text.trim() === "lite"
+        }
+    }
+
     property string kernel: ""
     property string packages: ""
     property string diskFree: ""
@@ -730,9 +741,76 @@ Item {
                         }
                     }
 
-                    ColumnLayout { // Keyboard + layout
+                    Item { // LITE (laptop): power mode button in place of the keyboard layout. Click cycles Performance, Balanced, Power saver
+                        id: powerButton
                         Layout.alignment: Qt.AlignVCenter
-                        visible: root.sideWidth >= 330
+                        visible: root.sideWidth >= 330 && root.isLite
+                        implicitWidth: 34
+                        implicitHeight: 34
+                        property string profile: ""
+                        readonly property var order: ["performance", "balanced", "power-saver"]
+                        readonly property string icon: profile === "performance" ? "speed" : profile === "power-saver" ? "eco" : "balance"
+                        readonly property string label: profile === "performance" ? "PERF" : profile === "power-saver" ? "SAVE" : profile === "balanced" ? "BAL" : "..."
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: 10
+                            color: powerMouse.containsMouse ? ColorUtils.transparentize(root.textColor, 0.85) : "transparent"
+                        }
+                        ColumnLayout {
+                            anchors.centerIn: parent
+                            spacing: -4
+                            MaterialSymbol {
+                                Layout.alignment: Qt.AlignHCenter
+                                text: powerButton.icon
+                                iconSize: 19
+                                color: powerButton.profile === "performance" ? root.accent : root.textColor
+                            }
+                            NkText {
+                                Layout.alignment: Qt.AlignHCenter
+                                text: powerButton.label
+                                font.pixelSize: 10
+                                font.weight: Font.Medium
+                            }
+                        }
+                        Process {
+                            id: powerGet
+                            command: ["powerprofilesctl", "get"]
+                            stdout: StdioCollector {
+                                id: powerOut
+                                onStreamFinished: powerButton.profile = powerOut.text.trim()
+                            }
+                        }
+                        Timer {
+                            interval: 4000
+                            running: powerButton.visible
+                            repeat: true
+                            triggeredOnStart: true
+                            onTriggered: if (!powerGet.running) powerGet.running = true
+                        }
+                        Timer { // read it back shortly after a change
+                            id: powerRecheck
+                            interval: 600
+                            onTriggered: if (!powerGet.running) powerGet.running = true
+                        }
+                        MouseArea {
+                            id: powerMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                const i = powerButton.order.indexOf(powerButton.profile);
+                                const next = powerButton.order[(i + 1) % powerButton.order.length];
+                                powerButton.profile = next;
+                                Quickshell.execDetached(["powerprofilesctl", "set", next]);
+                                Quickshell.execDetached(["notify-send", "-a", "Power mode", "-t", "2000", "Power mode", next === "performance" ? "Performance, smoothest, uses more battery" : next === "balanced" ? "Balanced" : "Power saver, longest battery"]);
+                                powerRecheck.restart();
+                            }
+                        }
+                    }
+
+                    ColumnLayout { // Keyboard + layout (full setup only, the laptop shows the power button instead)
+                        Layout.alignment: Qt.AlignVCenter
+                        visible: root.sideWidth >= 330 && !root.isLite
                         spacing: -4
                         MaterialSymbol {
                             Layout.alignment: Qt.AlignHCenter

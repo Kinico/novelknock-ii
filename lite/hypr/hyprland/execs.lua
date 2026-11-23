@@ -14,7 +14,7 @@ hl.on("hyprland.start", function ()
     -- Touchpad: two-finger swipe left/right switches workspace
     hl.exec_cmd("python3 $HOME/.config/hypr/custom/scripts/nk-swipe.py")
 
-    -- Power: Performance while plugged in, Balanced on battery (what Game mode did for calls)
+    -- Power: Performance profile (Balanced only on low battery), what Game mode did for calls
     hl.exec_cmd("bash $HOME/.config/hypr/custom/scripts/nk-power.sh")
 
     -- Clipboard: history

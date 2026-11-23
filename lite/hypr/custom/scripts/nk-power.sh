@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# NovelKnock LITE: power profile follows the charger.
-#   plugged in  -> performance (smooth video calls, same as Game mode did)
-#   on battery  -> balanced
+# NovelKnock LITE: keeps the CPU on the performance profile.
+#   performance all the time (balanced makes Meet and Discord lag on this laptop)
+#   balanced only when on battery and at 20% or less, to stretch the last bit
 # Turn it off by creating ~/.config/novelknock/no-auto-power
 command -v powerprofilesctl >/dev/null || exit 0
 [ -f "$HOME/.config/novelknock/no-auto-power" ] && exit 0
@@ -17,9 +17,16 @@ on_ac() {
     return 1
 }
 
+low_battery() {
+    for b in /sys/class/power_supply/BAT*/capacity; do
+        [ -f "$b" ] && [ "$(cat "$b")" -le 20 ] && return 0
+    done
+    return 1
+}
+
 last=""
 while true; do
-    if on_ac; then want=performance; else want=balanced; fi
+    if ! on_ac && low_battery; then want=balanced; else want=performance; fi
     if [ "$want" != "$last" ]; then
         # leave it alone if Game mode is on (it sets performance itself)
         [ -e "${XDG_STATE_HOME:-$HOME/.local/state}/wallpaper-watchdog/gamemode" ] || powerprofilesctl set "$want" 2>/dev/null
