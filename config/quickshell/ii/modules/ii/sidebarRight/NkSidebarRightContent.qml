@@ -11,6 +11,8 @@ import QtQuick.Layouts
 import QtQuick.Controls
 import Quickshell
 import Quickshell.Bluetooth
+import qs.modules.ii.sidebarRight.bluetoothDevices
+import qs.modules.ii.sidebarRight.wifiNetworks
 
 Item {
     id: root
@@ -26,6 +28,19 @@ Item {
     readonly property color accent: Appearance.colors.colPrimary
     property var screen: root.QsWindow.window?.screen
     readonly property var brightnessMonitor: Brightness.getMonitorForScreen(root.screen)
+
+    // Wi-Fi and Bluetooth lists open inside the sidebar (the little arrow on each toggle)
+    property bool showWifiDialog: false
+    property bool showBluetoothDialog: false
+    Connections {
+        target: GlobalStates
+        function onSidebarRightOpenChanged() {
+            if (!GlobalStates.sidebarRightOpen) {
+                root.showWifiDialog = false;
+                root.showBluetoothDialog = false;
+            }
+        }
+    }
 
     // "Unhover to close"
     property bool wasHovered: false
@@ -236,7 +251,10 @@ Item {
                     icon: Network.ethernet ? "lan" : Network.wifiEnabled ? "wifi" : "wifi_off"
                     isOn: Network.ethernet || Network.wifiEnabled
                     toggle: () => Network.toggleWifi()
-                    more: () => Quickshell.execDetached(["bash", "-c", Network.ethernet ? Config.options.apps.networkEthernet : Config.options.apps.network])
+                    more: () => {
+                        if (Network.ethernet) Quickshell.execDetached(["bash", "-c", Config.options.apps.networkEthernet]);
+                        else root.showWifiDialog = true;
+                    }
                 }
                 SplitToggle {
                     visible: BluetoothStatus.available
@@ -245,7 +263,7 @@ Item {
                     toggle: () => {
                         if (Bluetooth.defaultAdapter) Bluetooth.defaultAdapter.enabled = !Bluetooth.defaultAdapter.enabled;
                     }
-                    more: () => Quickshell.execDetached(["bash", "-c", Config.options.apps.bluetooth])
+                    more: () => root.showBluetoothDialog = true
                 }
 
                 Rectangle { // Brightness, thin slider like NovelKnock
@@ -655,6 +673,59 @@ Item {
                         }
                     }
                 }
+            }
+        }
+    }
+
+    // ===== Wi-Fi / Bluetooth lists (ii's own dialogs, shown over the sidebar) =====
+    ToggleDialog {
+        shownPropertyString: "showWifiDialog"
+        dialog: WifiDialog {}
+        onShownChanged: {
+            if (!shown) return;
+            Network.enableWifi();
+            Network.rescanWifi();
+        }
+    }
+
+    ToggleDialog {
+        shownPropertyString: "showBluetoothDialog"
+        dialog: BluetoothDialog {}
+        onShownChanged: {
+            if (!Bluetooth.defaultAdapter) return;
+            if (!shown) {
+                Bluetooth.defaultAdapter.discovering = false;
+            } else {
+                Bluetooth.defaultAdapter.enabled = true;
+                Bluetooth.defaultAdapter.discovering = true;
+            }
+        }
+    }
+
+    component ToggleDialog: Loader {
+        id: toggleDialogLoader
+        required property string shownPropertyString
+        property alias dialog: toggleDialogLoader.sourceComponent
+        readonly property bool shown: root[shownPropertyString]
+        anchors.fill: parent
+        z: 100
+
+        onShownChanged: if (shown) toggleDialogLoader.active = true;
+        active: shown
+        onActiveChanged: {
+            if (active) {
+                item.show = true;
+                item.forceActiveFocus();
+            }
+        }
+        Connections {
+            target: toggleDialogLoader.item
+            function onDismiss() {
+                toggleDialogLoader.item.show = false;
+                root[toggleDialogLoader.shownPropertyString] = false;
+            }
+            function onVisibleChanged() {
+                if (!toggleDialogLoader.item.visible && !root[toggleDialogLoader.shownPropertyString]) toggleDialogLoader.active = false;
             }
         }
     }
