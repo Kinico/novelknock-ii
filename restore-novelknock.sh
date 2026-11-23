@@ -15,6 +15,8 @@ grep -v '^#' files.list | while read -r f; do
   [ -z "$f" ] && continue
   # the PC monitor layout does not belong on the laptop
   [ "$LITE" = 1 ] && [ "$f" = "hypr/monitors.lua" ] && continue
+  # the Elaina look (Ctrl+Super+P) is for the PC only, the laptop keeps the stock families
+  [ "$LITE" = 1 ] && case "$f" in quickshell/ii/shell.qml|quickshell/ii/panelFamilies/ElainaFamily.qml|quickshell/ii/modules/elaina/*) true ;; *) false ;; esac && continue
   # the laptop keeps its own ii settings (wallpaper, workspaces shown, ...) after the first install
   [ "$LITE" = 1 ] && [ "$f" = "illogical-impulse/config.json" ] && [ -f "$CFG/$f" ] && [ -f "$CFG/novelknock/lite-config-done" ] && continue
   src="$REPO/config/$f"

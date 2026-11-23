@@ -7,6 +7,12 @@ quickshell/ii/modules/ii/sidebarRight/NkSidebarRightContent.qml
 quickshell/ii/modules/ii/sidebarRight/SidebarRight.qml
 quickshell/ii/modules/ii/mediaControls/NkBottomSheet.qml
 quickshell/ii/panelFamilies/IllogicalImpulseFamily.qml
+quickshell/ii/shell.qml
+quickshell/ii/panelFamilies/ElainaFamily.qml
+quickshell/ii/modules/elaina/ElainaTheme.qml
+quickshell/ii/modules/elaina/WitchHat.qml
+quickshell/ii/modules/elaina/ElainaBar.qml
+quickshell/ii/modules/elaina/ElainaSidebar.qml
 quickshell/ii/modules/common/Appearance.qml
 quickshell/ii/services/HyprlandData.qml
 quickshell/ii/services/NkCava.qml
