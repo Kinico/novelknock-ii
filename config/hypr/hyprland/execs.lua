@@ -21,7 +21,7 @@ hl.on("hyprland.start", function ()
     hl.exec_cmd("wl-paste --type image --watch bash -c 'cliphist store && qs -c $qsConfig ipc call cliphistService update'")
 
     -- Cursor
-    hl.exec_cmd("hyprctl setcursor ElainaPixel 32")
+    hl.exec_cmd("hyprctl setcursor ${XCURSOR_THEME:-ElainaPixel} ${XCURSOR_SIZE:-32}") -- follows XCURSOR_THEME / XCURSOR_SIZE in env.lua
     -- Tablet drivers
     --hl.exec_cmd("otd-daemon")
 end)
